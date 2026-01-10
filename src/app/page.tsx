@@ -71,11 +71,32 @@ export default function Home() {
     requestLocation();
   }, []);
 
-  const handleCheckIn = () => {
+  const [loadingLandmark, setLoadingLandmark] = useState(false);
+
+  const fetchLandmark = async (lat: number, lng: number) => {
+    try {
+      const MAPBOX_TOKEN = 'pk.eyJ1IjoicmFodWxyYWplZXYzMTIiLCJhIjoiY21rODdtMjBwMTdqZTNjcjVlZDQwZnBlaSJ9.3uKDZg_IkLtHrKoELv7w0Q';
+      const response = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${MAPBOX_TOKEN}&types=poi,address,neighborhood&limit=1`
+      );
+      const data = await response.json();
+      return data.features?.[0]?.place_name || "Unknown Location";
+    } catch (error) {
+      console.error("Geocoding error:", error);
+      return "Address unavailable";
+    }
+  };
+
+  const handleCheckIn = async () => {
     if (!location) return;
     setStatus("CHECKING_IN");
+    setLoadingLandmark(true);
+
+    const landmark = await fetchLandmark(location.lat, location.lng);
+
     setTimeout(() => {
       setStatus("CHECKED_IN");
+      setLoadingLandmark(false);
       const newAction = { type: "Check-in", time: new Date() };
       setLastAction(newAction);
       setActivities(prev => [{
@@ -84,16 +105,22 @@ export default function Home() {
         time: newAction.time,
         lat: location.lat,
         lng: location.lng,
+        address: landmark,
         status: "Pending"
       }, ...prev]);
     }, 1500);
   };
 
-  const handleCheckOut = () => {
+  const handleCheckOut = async () => {
     if (!location) return;
     setStatus("CHECKING_OUT");
+    setLoadingLandmark(true);
+
+    const landmark = await fetchLandmark(location.lat, location.lng);
+
     setTimeout(() => {
       setStatus("IDLE");
+      setLoadingLandmark(false);
       const newAction = { type: "Check-out", time: new Date() };
       setLastAction(newAction);
       setActivities(prev => [{
@@ -102,6 +129,7 @@ export default function Home() {
         time: newAction.time,
         lat: location.lat,
         lng: location.lng,
+        address: landmark,
         status: "Pending"
       }, ...prev]);
     }, 1500);
@@ -114,7 +142,10 @@ export default function Home() {
           <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
             <Clock className="text-white w-6 h-6" />
           </div>
-          <h1 className="text-xl font-bold">Attendance</h1>
+          <div>
+            <h1 className="text-xl font-bold">Attendance</h1>
+            <a href="/hod" className="text-[10px] text-blue-500 font-bold hover:underline">HOD Portal</a>
+          </div>
         </div>
         <div className="text-right">
           <p className="text-sm font-medium text-slate-500 dark:text-zinc-400 capitalize">
@@ -267,7 +298,10 @@ export default function Home() {
                   </div>
                   <div>
                     <p className="text-sm font-bold capitalize">{activity.type}</p>
-                    <p className="text-[10px] text-slate-500 dark:text-zinc-400">
+                    <p className="text-[10px] text-slate-500 dark:text-zinc-400 line-clamp-1 max-w-[150px]">
+                      {activity.address || `Lat: ${activity.lat.toFixed(2)}, Lng: ${activity.lng.toFixed(2)}`}
+                    </p>
+                    <p className="text-[10px] text-slate-400 dark:text-zinc-500">
                       {activity.time.toLocaleDateString([], { month: 'short', day: '2-digit', year: 'numeric' })}
                     </p>
                   </div>
