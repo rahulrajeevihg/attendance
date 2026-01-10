@@ -5,15 +5,16 @@ import dynamic from "next/dynamic";
 import { MapPin, Clock, LogIn, LogOut, CheckCircle2, AlertCircle, Map as MapIcon, ChevronDown, ChevronUp } from "lucide-react";
 
 import { erpnext } from "@/lib/erpnext";
+import { useRouter } from "next/navigation";
 
 const Map = dynamic(() => import("@/components/Map"), {
   ssr: false,
   loading: () => <div className="h-48 w-full bg-slate-100 dark:bg-zinc-800 animate-pulse rounded-3xl flex items-center justify-center text-slate-400 font-medium">Loading Map...</div>
 });
 
-const TEST_EMPLOYEE_ID = "IHG-10145";
-
 export default function Home() {
+  const router = useRouter();
+  const [employeeInfo, setEmployeeInfo] = useState<{ id: string; name: string; hod: string } | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isSecure, setIsSecure] = useState(true);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -27,6 +28,19 @@ export default function Home() {
   ]);
   const [historyMapLoc, setHistoryMapLoc] = useState<{ lat: number; lng: number } | null>(null);
   const [loadingLandmark, setLoadingLandmark] = useState(false);
+
+  useEffect(() => {
+    const email = localStorage.getItem("user_email");
+    const id = localStorage.getItem("employee_id");
+    const name = localStorage.getItem("employee_name");
+    const hod = localStorage.getItem("reports_to");
+
+    if (!email || !id) {
+      router.push("/login");
+    } else {
+      setEmployeeInfo({ id, name: name || "Employee", hod: hod || "" });
+    }
+  }, [router]);
 
   const requestLocation = () => {
     setLocationError(null);
@@ -78,7 +92,7 @@ export default function Home() {
 
   const fetchLandmark = async (lat: number, lng: number) => {
     try {
-      const MAPBOX_TOKEN = 'pk.eyJ1cCI6InJhaHVscmFqZWV2MzEyIiwiYSI6ImNtazg3bTIwcDE3amUzY3I1ZWQ0MGZwZWkifQ.3uKDZg_IkLtHrKoELv7w0Q';
+      const MAPBOX_TOKEN = 'pk.eyJ1IjoicmFodWxyYWplZXYzMTIiLCJhIjoiY21rODdtMjBwMTdqZTNjcjVlZDQwZnBlaSJ9.3uKDZg_IkLtHrKoELv7w0Q';
       const response = await fetch(
         `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${MAPBOX_TOKEN}&types=poi,address,neighborhood&limit=1`
       );
@@ -91,8 +105,8 @@ export default function Home() {
   };
 
   const handleAction = async (type: "IN" | "OUT") => {
-    if (!location) {
-      setLocationError("Location is required for check-in.");
+    if (!location || !employeeInfo) {
+      setLocationError("Location and Session are required.");
       return;
     }
 
@@ -105,13 +119,14 @@ export default function Home() {
 
       // POST to ERPNext
       await erpnext.postCheckin({
-        employee: TEST_EMPLOYEE_ID,
+        employee: employeeInfo.id,
         log_type: type,
         checkin_time: checkinTime.toISOString(),
         latitude: location.lat,
         longitude: location.lng,
         landmark: landmark,
-        status: "Pending"
+        status: "Pending",
+        hod: employeeInfo.hod // Tagged HOD from employee record
       });
 
       setStatus(type === "IN" ? "CHECKED_IN" : "IDLE");
@@ -136,6 +151,8 @@ export default function Home() {
 
   const handleCheckIn = () => handleAction("IN");
   const handleCheckOut = () => handleAction("OUT");
+
+  if (!employeeInfo) return null; // Wait for redirect or auth
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex flex-col items-center p-4 sm:p-8 font-sans transition-colors duration-500 text-slate-900 dark:text-white">
@@ -178,7 +195,7 @@ export default function Home() {
 
           <div className="space-y-1">
             <p className="text-slate-500 dark:text-zinc-400 text-sm font-medium">Welcome back,</p>
-            <h2 className="text-2xl font-bold">Rahul K.</h2>
+            <h2 className="text-2xl font-bold">{employeeInfo.name}</h2>
           </div>
 
           <div className="mt-8 grid grid-cols-2 gap-4">

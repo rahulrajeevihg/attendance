@@ -1,6 +1,5 @@
 const ERPNEXT_URL = 'https://erp.ihgind.com';
-const API_KEY = 'e9d536fe3a27e08';
-const API_SECRET = '80ca732d095ceb7';
+const TOKEN = 'token 5a58f74d3a6048c:b76e8329ac883ff';
 
 export interface MobileCheckinData {
     employee: string;
@@ -18,7 +17,7 @@ export const erpnext = {
         const response = await fetch(`${ERPNEXT_URL}/api/resource/Mobile Checkin`, {
             method: 'POST',
             headers: {
-                'Authorization': `token ${API_KEY}:${API_SECRET}`,
+                'Authorization': TOKEN,
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
             },
@@ -42,7 +41,7 @@ export const erpnext = {
         const response = await fetch(url, {
             method: 'GET',
             headers: {
-                'Authorization': `token ${API_KEY}:${API_SECRET}`,
+                'Authorization': TOKEN,
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
             },
@@ -60,7 +59,7 @@ export const erpnext = {
         const response = await fetch(`${ERPNEXT_URL}/api/resource/Mobile Checkin/${name}`, {
             method: 'PUT',
             headers: {
-                'Authorization': `token ${API_KEY}:${API_SECRET}`,
+                'Authorization': TOKEN,
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
             },
@@ -75,5 +74,25 @@ export const erpnext = {
         }
 
         return await response.json();
+    },
+
+    async login(usr: string, pwd: string) {
+        const response = await fetch(`${ERPNEXT_URL}/api/method/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ usr, pwd }),
+        });
+        if (!response.ok) throw new Error('Invalid credentials');
+        return await response.json();
+    },
+
+    async getEmployee(email: string) {
+        const url = `${ERPNEXT_URL}/api/resource/Employee?fields=["name","employee_name","reports_to"]&filters=[["user_id", "=", "${email}"]]`;
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { 'Authorization': TOKEN },
+        });
+        const data = await response.json();
+        return data.data?.[0] || null;
     }
 };

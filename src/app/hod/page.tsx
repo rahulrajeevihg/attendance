@@ -12,15 +12,29 @@ const Map = dynamic(() => import("@/components/Map"), {
 });
 
 export default function HODDashboard() {
+    const router = useRouter();
+    const [hodInfo, setHodInfo] = useState<{ id: string; name: string } | null>(null);
     const [pendingActivities, setPendingActivities] = useState<any[]>([]);
     const [selectedMap, setSelectedMap] = useState<{ lat: number; lng: number; name: string } | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    useEffect(() => {
+        const id = localStorage.getItem("employee_id");
+        const name = localStorage.getItem("employee_name");
+        if (!id) {
+            router.push("/login");
+        } else {
+            setHodInfo({ id, name: name || "Manager" });
+        }
+    }, [router]);
+
     const fetchActivities = async () => {
+        if (!hodInfo) return; // Guard clause: only fetch if hodInfo is available
         setLoading(true);
         try {
-            const data = await erpnext.getPendingCheckins();
+            // Pass HOD ID to filter records assigned to them
+            const data = await erpnext.getPendingCheckins(hodInfo.id);
             // Map ERPNext fields to UI fields
             const formatted = data.map((item: any) => ({
                 id: item.name, // ERPNext document name
@@ -70,8 +84,8 @@ export default function HODDashboard() {
             <main className="w-full max-w-md space-y-6">
                 <div className="mb-2 flex justify-between items-end">
                     <div>
-                        <h2 className="text-2xl font-bold">Pending Approvals</h2>
-                        <p className="text-sm text-slate-500 dark:text-zinc-400">Review check-in activity for your team.</p>
+                        <h2 className="text-2xl font-bold">Team Approvals</h2>
+                        <p className="text-sm text-slate-500 dark:text-zinc-400">Reviewing records for {hodInfo.name}</p>
                     </div>
                     <button
                         onClick={fetchActivities}
