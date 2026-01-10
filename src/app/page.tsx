@@ -10,6 +10,13 @@ const Map = dynamic(() => import("@/components/Map"), {
 });
 
 export default function Home() {
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [isSecure, setIsSecure] = useState(true);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [status, setStatus] = useState<"IDLE" | "CHECKING_IN" | "CHECKED_IN" | "CHECKING_OUT">("IDLE");
+  const [lastAction, setLastAction] = useState<{ type: string; time: Date } | null>(null);
+  const [showMap, setShowMap] = useState(false);
   const [activities, setActivities] = useState<any[]>([
     { id: 1, type: "Check In", time: new Date(Date.now() - 36000000), lat: 25.1358, lng: 55.2411, status: "Approved" },
     { id: 2, type: "Check Out", time: new Date(Date.now() - 28000000), lat: 25.1401, lng: 55.2450, status: "Approved" }
