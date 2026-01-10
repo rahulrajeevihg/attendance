@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CheckCircle2, XCircle, Map as MapIcon, ChevronLeft, User, Clock, MapPin } from "lucide-react";
 import dynamic from "next/dynamic";
+
+import { erpnext } from "@/lib/erpnext";
 
 const Map = dynamic(() => import("@/components/Map"), {
     ssr: false,
@@ -10,20 +12,47 @@ const Map = dynamic(() => import("@/components/Map"), {
 });
 
 export default function HODDashboard() {
-    const [pendingActivities, setPendingActivities] = useState([
-        { id: 101, name: "Rahul K.", type: "Check In", time: "09:12 AM", date: "Jan 10, 2026", lat: 25.1358, lng: 55.2411, address: "Business Bay, Dubai, UAE" },
-        { id: 102, name: "Sarah M.", type: "Check In", time: "08:45 AM", date: "Jan 10, 2026", lat: 25.1972, lng: 55.2744, address: "Downtown Dubai, UAE" },
-        { id: 103, name: "James L.", type: "Check Out", time: "05:30 PM", date: "Jan 09, 2026", lat: 25.0781, lng: 55.1358, address: "Dubai Marina, UAE" },
-    ]);
-
+    const [pendingActivities, setPendingActivities] = useState<any[]>([]);
     const [selectedMap, setSelectedMap] = useState<{ lat: number; lng: number; name: string } | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    const handleApprove = (id: number) => {
-        setPendingActivities(prev => prev.filter(a => a.id !== id));
+    const fetchActivities = async () => {
+        setLoading(true);
+        try {
+            const data = await erpnext.getPendingCheckins();
+            // Map ERPNext fields to UI fields
+            const formatted = data.map((item: any) => ({
+                id: item.name, // ERPNext document name
+                name: item.employee,
+                type: item.log_type === "IN" ? "Check In" : "Check Out",
+                time: new Date(item.checkin_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                date: new Date(item.checkin_time).toLocaleDateString([], { month: 'short', day: '2-digit', year: 'numeric' }),
+                lat: item.latitude,
+                lng: item.longitude,
+                address: item.landmark || "No address captured"
+            }));
+            setPendingActivities(formatted);
+            setError(null);
+        } catch (err: any) {
+            setError("Failed to load activities from ERPNext");
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const handleReject = (id: number) => {
-        setPendingActivities(prev => prev.filter(a => a.id !== id));
+    useEffect(() => {
+        fetchActivities();
+    }, []);
+
+    const handleAction = async (id: string, status: 'Approved' | 'Rejected') => {
+        try {
+            await erpnext.updateStatus(id, status);
+            setPendingActivities(prev => prev.filter(a => a.id !== id));
+        } catch (err) {
+            alert(`Failed to ${status} activity`);
+        }
     };
 
     return (
@@ -39,10 +68,25 @@ export default function HODDashboard() {
             </header>
 
             <main className="w-full max-w-md space-y-6">
-                <div className="mb-2">
-                    <h2 className="text-2xl font-bold">Pending Approvals</h2>
-                    <p className="text-sm text-slate-500 dark:text-zinc-400">Review check-in activity for your team.</p>
+                <div className="mb-2 flex justify-between items-end">
+                    <div>
+                        <h2 className="text-2xl font-bold">Pending Approvals</h2>
+                        <p className="text-sm text-slate-500 dark:text-zinc-400">Review check-in activity for your team.</p>
+                    </div>
+                    <button
+                        onClick={fetchActivities}
+                        className="text-[10px] font-bold text-blue-600 uppercase tracking-widest hover:underline"
+                    >
+                        Refresh
+                    </button>
                 </div>
+
+                {error && (
+                    <div className="bg-rose-50 dark:bg-rose-500/10 p-4 rounded-2xl border border-rose-100 dark:border-rose-500/20 text-rose-500 text-sm font-medium flex items-center gap-2">
+                        <Clock className="w-4 h-4" />
+                        {error}
+                    </div>
+                )}
 
                 {selectedMap && (
                     <div className="bg-white dark:bg-zinc-900 rounded-3xl p-4 shadow-xl border border-blue-100 dark:border-blue-900/30 animate-in fade-in zoom-in duration-300">
@@ -60,7 +104,13 @@ export default function HODDashboard() {
                 )}
 
                 <div className="space-y-4">
-                    {pendingActivities.length === 0 ? (
+                    {loading ? (
+                        <div className="space-y-4">
+                            {[1, 2].map(i => (
+                                <div key={i} className="h-48 w-full bg-slate-100 dark:bg-zinc-900 animate-pulse rounded-3xl" />
+                            ))}
+                        </div>
+                    ) : pendingActivities.length === 0 ? (
                         <div className="text-center py-20 bg-white dark:bg-zinc-900 rounded-3xl border border-dashed border-slate-200 dark:border-zinc-800">
                             <CheckCircle2 className="w-12 h-12 text-green-500/30 mx-auto mb-4" />
                             <p className="text-slate-400 font-medium">All caught up!</p>
@@ -91,21 +141,21 @@ export default function HODDashboard() {
 
                                 <div className="bg-slate-50 dark:bg-zinc-800/50 p-3 rounded-2xl mb-4 flex items-start gap-2">
                                     <MapPin className="w-3.5 h-3.5 text-blue-500 mt-0.5" />
-                                    <p className="text-[11px] text-slate-600 dark:text-zinc-400 font-medium leading-relaxed">
-                                        Captured: {activity.address}
+                                    <p className="text-[11px] text-slate-600 dark:text-zinc-400 font-medium leading-relaxed line-clamp-2">
+                                        {activity.address}
                                     </p>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-3">
                                     <button
-                                        onClick={() => handleReject(activity.id)}
+                                        onClick={() => handleAction(activity.id, 'Rejected')}
                                         className="flex items-center justify-center gap-2 py-3 bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-rose-100 transition-all active:scale-95"
                                     >
                                         <XCircle className="w-4 h-4" />
                                         Reject
                                     </button>
                                     <button
-                                        onClick={() => handleApprove(activity.id)}
+                                        onClick={() => handleAction(activity.id, 'Approved')}
                                         className="flex items-center justify-center gap-2 py-3 bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-400 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-green-100 transition-all active:scale-95 border border-green-100 dark:border-green-500/20"
                                     >
                                         <CheckCircle2 className="w-4 h-4" />

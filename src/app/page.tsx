@@ -4,10 +4,14 @@ import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { MapPin, Clock, LogIn, LogOut, CheckCircle2, AlertCircle, Map as MapIcon, ChevronDown, ChevronUp } from "lucide-react";
 
+import { erpnext } from "@/lib/erpnext";
+
 const Map = dynamic(() => import("@/components/Map"), {
   ssr: false,
   loading: () => <div className="h-48 w-full bg-slate-100 dark:bg-zinc-800 animate-pulse rounded-3xl flex items-center justify-center text-slate-400 font-medium">Loading Map...</div>
 });
+
+const TEST_EMPLOYEE_ID = "IHG-10145";
 
 export default function Home() {
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -18,10 +22,11 @@ export default function Home() {
   const [lastAction, setLastAction] = useState<{ type: string; time: Date } | null>(null);
   const [showMap, setShowMap] = useState(false);
   const [activities, setActivities] = useState<any[]>([
-    { id: 1, type: "Check In", time: new Date(Date.now() - 36000000), lat: 25.1358, lng: 55.2411, status: "Approved" },
-    { id: 2, type: "Check Out", time: new Date(Date.now() - 28000000), lat: 25.1401, lng: 55.2450, status: "Approved" }
+    { id: 1, type: "Check In", time: new Date(Date.now() - 36000000), lat: 25.1358, lng: 55.2411, address: "Business Bay, Dubai, UAE", status: "Approved" },
+    { id: 2, type: "Check Out", time: new Date(Date.now() - 28000000), lat: 25.1401, lng: 55.2450, address: "Downtown Dubai, UAE", status: "Approved" }
   ]);
   const [historyMapLoc, setHistoryMapLoc] = useState<{ lat: number; lng: number } | null>(null);
+  const [loadingLandmark, setLoadingLandmark] = useState(false);
 
   const requestLocation = () => {
     setLocationError(null);
@@ -71,11 +76,9 @@ export default function Home() {
     requestLocation();
   }, []);
 
-  const [loadingLandmark, setLoadingLandmark] = useState(false);
-
   const fetchLandmark = async (lat: number, lng: number) => {
     try {
-      const MAPBOX_TOKEN = 'pk.eyJ1IjoicmFodWxyYWplZXYzMTIiLCJhIjoiY21rODdtMjBwMTdqZTNjcjVlZDQwZnBlaSJ9.3uKDZg_IkLtHrKoELv7w0Q';
+      const MAPBOX_TOKEN = 'pk.eyJ1cCI6InJhaHVscmFqZWV2MzEyIiwiYSI6ImNtazg3bTIwcDE3amUzY3I1ZWQ0MGZwZWkifQ.3uKDZg_IkLtHrKoELv7w0Q';
       const response = await fetch(
         `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${MAPBOX_TOKEN}&types=poi,address,neighborhood&limit=1`
       );
@@ -87,53 +90,52 @@ export default function Home() {
     }
   };
 
-  const handleCheckIn = async () => {
-    if (!location) return;
-    setStatus("CHECKING_IN");
+  const handleAction = async (type: "IN" | "OUT") => {
+    if (!location) {
+      setLocationError("Location is required for check-in.");
+      return;
+    }
+
+    setStatus(type === "IN" ? "CHECKING_IN" : "CHECKING_OUT");
     setLoadingLandmark(true);
 
-    const landmark = await fetchLandmark(location.lat, location.lng);
+    try {
+      const landmark = await fetchLandmark(location.lat, location.lng);
+      const checkinTime = new Date();
 
-    setTimeout(() => {
-      setStatus("CHECKED_IN");
+      // POST to ERPNext
+      await erpnext.postCheckin({
+        employee: TEST_EMPLOYEE_ID,
+        log_type: type,
+        checkin_time: checkinTime.toISOString(),
+        latitude: location.lat,
+        longitude: location.lng,
+        landmark: landmark,
+        status: "Pending"
+      });
+
+      setStatus(type === "IN" ? "CHECKED_IN" : "IDLE");
       setLoadingLandmark(false);
-      const newAction = { type: "Check-in", time: new Date() };
-      setLastAction(newAction);
+      setLastAction({ type: type === "IN" ? "Check-in" : "Check-out", time: checkinTime });
       setActivities(prev => [{
         id: Date.now(),
-        type: "Check In",
-        time: newAction.time,
+        type: type === "IN" ? "Check In" : "Check Out",
+        time: checkinTime,
         lat: location.lat,
         lng: location.lng,
         address: landmark,
         status: "Pending"
       }, ...prev]);
-    }, 1500);
-  };
-
-  const handleCheckOut = async () => {
-    if (!location) return;
-    setStatus("CHECKING_OUT");
-    setLoadingLandmark(true);
-
-    const landmark = await fetchLandmark(location.lat, location.lng);
-
-    setTimeout(() => {
-      setStatus("IDLE");
+    } catch (error: any) {
+      console.error("ERPNext Sync Error:", error);
+      setLocationError(`Sync Error: ${error.message}`);
+      setStatus(type === "IN" ? "IDLE" : "CHECKED_IN");
       setLoadingLandmark(false);
-      const newAction = { type: "Check-out", time: new Date() };
-      setLastAction(newAction);
-      setActivities(prev => [{
-        id: Date.now(),
-        type: "Check Out",
-        time: newAction.time,
-        lat: location.lat,
-        lng: location.lng,
-        address: landmark,
-        status: "Pending"
-      }, ...prev]);
-    }, 1500);
+    }
   };
+
+  const handleCheckIn = () => handleAction("IN");
+  const handleCheckOut = () => handleAction("OUT");
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex flex-col items-center p-4 sm:p-8 font-sans transition-colors duration-500 text-slate-900 dark:text-white">
