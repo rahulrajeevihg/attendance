@@ -16,7 +16,8 @@ import {
   History as HistoryIcon,
   Calendar as CalendarIcon,
   CheckCircle,
-  Home as HomeIcon
+  Home as HomeIcon,
+  XCircle
 } from "lucide-react";
 
 import { erpnext } from "@/lib/erpnext";
@@ -45,6 +46,8 @@ export default function Home() {
   const [loadingLandmark, setLoadingLandmark] = useState(false);
   const [myCheckins, setMyCheckins] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [totalWorkTime, setTotalWorkTime] = useState(0); // in seconds
+  const [activeStartTime, setActiveStartTime] = useState<Date | null>(null);
 
   useEffect(() => {
     const email = localStorage.getItem("user_email");
@@ -65,9 +68,85 @@ export default function Home() {
           image: image || ""
         });
       });
-      fetchMyHistory(id);
+      fetchEverything(id);
     }
   }, [router]);
+
+  const fetchEverything = async (id: string) => {
+    await fetchMyHistory(id);
+  };
+
+  const fetchMyHistory = async (empId: string) => {
+    setLoadingHistory(true);
+    try {
+      const data = await erpnext.getMyCheckins(empId);
+      setMyCheckins(data);
+
+      // Calculate today's status and duration
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todaysLogs = data.filter((log: any) => new Date(log.checkin_time) >= today);
+
+      // Determine if checked in
+      const lastLog = todaysLogs[0]; // Ordered by checkin_time desc
+      if (lastLog && lastLog.log_type === 'IN' && lastLog.status === 'Approved') {
+        setStatus("CHECKED_IN");
+        setActiveStartTime(new Date(lastLog.checkin_time));
+      } else {
+        setStatus("IDLE");
+        setActiveStartTime(null);
+      }
+
+      // Calculate total approved duration for today
+      let totalSeconds = 0;
+      const approvedTodaysLogs = todaysLogs.filter((l: any) => l.status === 'Approved').reverse();
+
+      for (let i = 0; i < approvedTodaysLogs.length; i += 2) {
+        const inLog = approvedTodaysLogs[i];
+        const outLog = approvedTodaysLogs[i + 1];
+        if (inLog && outLog && inLog.log_type === 'IN' && outLog.log_type === 'OUT') {
+          totalSeconds += (new Date(outLog.checkin_time).getTime() - new Date(inLog.checkin_time).getTime()) / 1000;
+        }
+      }
+      setTotalWorkTime(totalSeconds);
+
+    } catch (error) {
+      console.error("Failed to fetch history:", error);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const handleDelete = async (name: string) => {
+    if (!confirm("Are you sure you want to delete this pending check-in?")) return;
+    try {
+      await erpnext.deleteCheckin(name);
+      if (employeeInfo) fetchMyHistory(employeeInfo.id);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const formatDuration = (totalSeconds: number) => {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = Math.floor(totalSeconds % 60);
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  };
+
+  const dayLogs = myCheckins.filter((log: any) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return new Date(log.checkin_time) >= today;
+  });
+
+  const getActiveDuration = () => {
+    let seconds = totalWorkTime;
+    if (activeStartTime) {
+      seconds += (currentTime.getTime() - activeStartTime.getTime()) / 1000;
+    }
+    return formatDuration(seconds);
+  };
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -115,17 +194,6 @@ export default function Home() {
     }
   };
 
-  const fetchMyHistory = async (empId: string) => {
-    setLoadingHistory(true);
-    try {
-      const data = await erpnext.getMyCheckins(empId);
-      setMyCheckins(data);
-    } catch (error) {
-      console.error("Failed to fetch history:", error);
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
 
   const fetchLandmark = async (lat: number, lng: number) => {
     try {
@@ -215,13 +283,21 @@ export default function Home() {
                       <Clock className="w-5 h-5" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-sm">{item.log_type === 'IN' ? 'Check In' : 'Check Out'}</h4>
+                      <h4 className="font-bold text-sm tracking-tight">{item.log_type === 'IN' ? 'Check In' : 'Check Out'}</h4>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
                         {new Date(item.checkin_time).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
                   </div>
-                  <div className="bg-amber-50 text-amber-600 dark:bg-amber-500/10 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">Pending</div>
+                  <div className="flex items-center gap-2">
+                    <div className="bg-amber-50 text-amber-600 dark:bg-amber-500/10 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">Pending</div>
+                    <button
+                      onClick={() => handleDelete(item.name)}
+                      className="p-2 hover:bg-rose-50 text-rose-400 rounded-xl transition-colors"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -273,46 +349,77 @@ export default function Home() {
 
     // Default: Dashboard
     return (
-      <div className="w-full space-y-12 pb-24 text-center">
+      <div className="w-full space-y-10 pb-24">
         <div className="flex flex-col items-center">
-          <div className="w-48 h-48 bg-white dark:bg-zinc-900 rounded-[4rem] shadow-2xl shadow-blue-500/10 flex items-center justify-center mb-8 border border-slate-100 dark:border-zinc-800 relative group transition-transform hover:scale-105 duration-500">
-            <Clock className="w-24 h-24 text-blue-600 group-hover:rotate-12 transition-transform duration-500" />
-            <div className="absolute inset-0 bg-blue-600/5 rounded-[4rem] animate-ping opacity-20" />
+          <div className="w-44 h-44 bg-white dark:bg-zinc-900 rounded-[4rem] shadow-2xl shadow-blue-500/10 flex items-center justify-center mb-8 border border-slate-100 dark:border-zinc-800 relative group transition-transform hover:scale-105 duration-500">
+            <Clock className={`w-20 h-20 ${status === 'CHECKED_IN' ? 'text-green-500' : 'text-blue-600'} group-hover:rotate-12 transition-transform duration-500`} />
+            <div className={`absolute inset-0 bg-blue-600/5 rounded-[4rem] animate-ping opacity-20 ${status === 'CHECKED_IN' ? 'bg-green-600/5' : ''}`} />
           </div>
 
-          <div className="space-y-4">
-            <p className="text-slate-500 dark:text-zinc-400 text-xs font-bold uppercase tracking-[0.3em]">DAILY OVERVIEW</p>
-            <h2 className="text-5xl font-extrabold tracking-tight">
-              {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          <div className="space-y-3 text-center">
+            <p className="text-slate-500 dark:text-zinc-400 text-[10px] font-black uppercase tracking-[0.3em]">Total Hours Today</p>
+            <h2 className="text-6xl font-black tracking-tighter font-mono">
+              {getActiveDuration()}
             </h2>
             <div className="flex items-center justify-center gap-2">
-              <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">
-                {currentTime.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">
+                {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               </span>
             </div>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-zinc-900 p-8 rounded-[3rem] shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-zinc-800">
-          <div className="flex justify-between items-center px-2">
-            <div className="text-left">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">CURRENT STATUS</p>
-              <p className={`text-lg font-bold ${status === 'CHECKED_IN' ? 'text-green-500' : 'text-slate-400'}`}>
-                {status === "CHECKED_IN" ? "Currently On-Shift" : "Inactive"}
-              </p>
-            </div>
-            {lastAction && (
-              <div className="text-right">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">LAST LOG</p>
-                <p className="text-sm font-bold">{lastAction.type} • {lastAction.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-              </div>
+        <div className="bg-white dark:bg-zinc-900 p-6 rounded-[3rem] shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-zinc-800">
+          <div className="flex justify-between items-center px-2 mb-6">
+            <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-zinc-200">Today's Logs</h3>
+            <button
+              onClick={() => employeeInfo && fetchMyHistory(employeeInfo.id)}
+              className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline"
+            >
+              Sync Now
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {dayLogs.length === 0 ? (
+              <p className="text-center py-6 text-slate-400 text-xs font-bold uppercase tracking-widest">No logs yet today</p>
+            ) : (
+              dayLogs.map((log: any) => (
+                <div key={log.name} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-zinc-800/50 rounded-2xl border border-slate-100/50 dark:border-zinc-800/50 group">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${log.log_type === 'IN' ? 'bg-green-100 text-green-600' : 'bg-rose-100 text-rose-600'}`}>
+                      {log.log_type === 'IN' ? <LogIn className="w-5 h-5" /> : <LogOut className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm tracking-tight">{log.log_type === 'IN' ? 'Check In' : 'Check Out'}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{new Date(log.checkin_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`text-[9px] font-black px-2 py-1 rounded-full uppercase tracking-tighter ${log.status === 'Approved' ? 'bg-green-500 text-white' :
+                      log.status === 'Rejected' ? 'bg-rose-500 text-white' : 'bg-amber-400 text-white'
+                      }`}>
+                      {log.status}
+                    </span>
+                    {log.status === 'Pending' && (
+                      <button
+                        onClick={() => handleDelete(log.name)}
+                        className="p-2 hover:bg-rose-50 text-rose-400 rounded-xl transition-colors"
+                        title="Discard Log"
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
             )}
           </div>
         </div>
 
-        <div className="pt-4 px-4">
-          <p className="text-slate-400 text-xs font-medium leading-relaxed italic">
-            "Tap the + button to capture your location and log your activity."
+        <div className="px-6 text-center">
+          <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] leading-relaxed italic opacity-60">
+            "Work with intent. Precision in every second."
           </p>
         </div>
       </div>

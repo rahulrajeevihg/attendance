@@ -145,6 +145,23 @@ export const erpnext = {
         return await response.json();
     },
 
+    async deleteCheckin(name: string) {
+        const response = await fetch(`${ERPNEXT_URL}/api/resource/Mobile Checkin/${name}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': TOKEN,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to delete check-in log');
+        }
+
+        return await response.json();
+    },
+
     async login(usr: string, pwd: string) {
         const response = await fetch(`${ERPNEXT_URL}/api/method/login`, {
             method: 'POST',

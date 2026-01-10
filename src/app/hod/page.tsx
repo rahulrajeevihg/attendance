@@ -64,8 +64,10 @@ export default function HODDashboard() {
     };
 
     useEffect(() => {
-        fetchActivities();
-    }, []);
+        if (hodInfo) {
+            fetchActivities();
+        }
+    }, [hodInfo]);
 
     const handleAction = async (id: string, status: 'Approved' | 'Rejected') => {
         try {
