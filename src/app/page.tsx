@@ -10,13 +10,11 @@ const Map = dynamic(() => import("@/components/Map"), {
 });
 
 export default function Home() {
-  const [currentTime, setCurrentTime] = useState(new Date());
-  const [isSecure, setIsSecure] = useState(true);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [locationError, setLocationError] = useState<string | null>(null);
-  const [status, setStatus] = useState<"IDLE" | "CHECKING_IN" | "CHECKED_IN" | "CHECKING_OUT">("IDLE");
-  const [lastAction, setLastAction] = useState<{ type: string; time: Date } | null>(null);
-  const [showMap, setShowMap] = useState(false);
+  const [activities, setActivities] = useState<any[]>([
+    { id: 1, type: "Check In", time: new Date(Date.now() - 36000000), lat: 25.1358, lng: 55.2411, status: "Approved" },
+    { id: 2, type: "Check Out", time: new Date(Date.now() - 28000000), lat: 25.1401, lng: 55.2450, status: "Approved" }
+  ]);
+  const [historyMapLoc, setHistoryMapLoc] = useState<{ lat: number; lng: number } | null>(null);
 
   const requestLocation = () => {
     setLocationError(null);
@@ -29,7 +27,6 @@ export default function Home() {
     }
 
     if ("geolocation" in navigator) {
-      // Use watchPosition for a "warm up" on mobile
       const watchId = navigator.geolocation.watchPosition(
         (position) => {
           setLocation({
@@ -68,20 +65,38 @@ export default function Home() {
   }, []);
 
   const handleCheckIn = () => {
+    if (!location) return;
     setStatus("CHECKING_IN");
-    // Simulate API call
     setTimeout(() => {
       setStatus("CHECKED_IN");
-      setLastAction({ type: "Check-in", time: new Date() });
+      const newAction = { type: "Check-in", time: new Date() };
+      setLastAction(newAction);
+      setActivities(prev => [{
+        id: Date.now(),
+        type: "Check In",
+        time: newAction.time,
+        lat: location.lat,
+        lng: location.lng,
+        status: "Pending"
+      }, ...prev]);
     }, 1500);
   };
 
   const handleCheckOut = () => {
+    if (!location) return;
     setStatus("CHECKING_OUT");
-    // Simulate API call
     setTimeout(() => {
       setStatus("IDLE");
-      setLastAction({ type: "Check-out", time: new Date() });
+      const newAction = { type: "Check-out", time: new Date() };
+      setLastAction(newAction);
+      setActivities(prev => [{
+        id: Date.now(),
+        type: "Check Out",
+        time: newAction.time,
+        lat: location.lat,
+        lng: location.lng,
+        status: "Pending"
+      }, ...prev]);
     }, 1500);
   };
 
@@ -127,7 +142,7 @@ export default function Home() {
           </div>
 
           <div className="mt-8 grid grid-cols-2 gap-4">
-            <div className="bg-slate-50 dark:bg-zinc-800/50 rounded-2xl p-4 transition-colors">
+            <div className="bg-slate-50 dark:bg-zinc-800/50 rounded-2xl p-4 transition-colors text-center">
               <p className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1">Last Action</p>
               <p className="text-sm font-bold">
                 {lastAction ? lastAction.type : "No records today"}
@@ -136,7 +151,7 @@ export default function Home() {
                 {lastAction ? lastAction.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "--:--"}
               </p>
             </div>
-            <div className="bg-slate-50 dark:bg-zinc-800/50 rounded-2xl p-4 transition-colors">
+            <div className="bg-slate-50 dark:bg-zinc-800/50 rounded-2xl p-4 transition-colors text-center">
               <p className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1">Current Shift</p>
               <p className="text-sm font-bold">
                 General Shift
@@ -208,19 +223,22 @@ export default function Home() {
           {!locationError && location && (
             <div className="w-full flex flex-col gap-3">
               <button
-                onClick={() => setShowMap(!showMap)}
+                onClick={() => {
+                  setShowMap(!showMap);
+                  setHistoryMapLoc(null); // Reset to live location
+                }}
                 className="flex items-center justify-between w-full bg-white dark:bg-zinc-900 px-4 py-3 rounded-2xl text-sm font-semibold border border-slate-100 dark:border-zinc-800 shadow-sm text-slate-700 dark:text-zinc-300 hover:bg-slate-50 transition-colors"
               >
                 <div className="flex items-center gap-2">
                   <MapIcon className="w-4 h-4 text-blue-500" />
-                  <span>{location.lat.toFixed(4)}, {location.lng.toFixed(4)}</span>
+                  <span>{historyMapLoc ? `Historical: ${historyMapLoc.lat.toFixed(4)}, ${historyMapLoc.lng.toFixed(4)}` : `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`}</span>
                 </div>
                 {showMap ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
               </button>
 
               {showMap && (
                 <div className="h-64 w-full rounded-3xl overflow-hidden shadow-xl border-4 border-white dark:border-zinc-800 animate-in fade-in slide-in-from-top-4 duration-500">
-                  <Map lat={location.lat} lng={location.lng} />
+                  <Map lat={historyMapLoc?.lat || location.lat} lng={historyMapLoc?.lng || location.lng} />
                 </div>
               )}
             </div>
@@ -230,24 +248,41 @@ export default function Home() {
         {/* Recent History Preview */}
         <div className="pt-4">
           <div className="flex justify-between items-center mb-4 px-2">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">Recent Activity</h3>
+            <h3 className="text-sm font-bold uppercase tracking-wider">Recent Activity</h3>
             <button className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest hover:underline">View All</button>
           </div>
           <div className="space-y-3">
-            {[1, 2].map((i) => (
-              <div key={i} className="bg-white dark:bg-zinc-900 p-4 rounded-2xl flex items-center justify-between border border-slate-100 dark:border-zinc-800 shadow-sm hover:border-blue-100 dark:hover:border-blue-900/30 transition-all group">
+            {activities.map((activity) => (
+              <div key={activity.id} className="bg-white dark:bg-zinc-900 p-4 rounded-2xl flex items-center justify-between border border-slate-100 dark:border-zinc-800 shadow-sm hover:border-blue-100 dark:hover:border-blue-900/30 transition-all group">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-zinc-800 flex items-center justify-center group-hover:bg-blue-50 dark:group-hover:bg-blue-950/30 transition-colors">
-                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                    <CheckCircle2 className={`w-5 h-5 ${activity.type === "Check In" ? "text-green-500" : "text-rose-500"}`} />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-slate-900 dark:text-white capitalize">Check In</p>
-                    <p className="text-[10px] text-slate-500 dark:text-zinc-400">Office Branch • Jan 09, 2026</p>
+                    <p className="text-sm font-bold capitalize">{activity.type}</p>
+                    <p className="text-[10px] text-slate-500 dark:text-zinc-400">
+                      {activity.time.toLocaleDateString([], { month: 'short', day: '2-digit', year: 'numeric' })}
+                    </p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold text-slate-900 dark:text-white uppercase">09:12 AM</p>
-                  <p className="text-[10px] text-green-600 font-bold uppercase tracking-tighter">Approved</p>
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => {
+                      setHistoryMapLoc({ lat: activity.lat, lng: activity.lng });
+                      setShowMap(true);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors text-blue-500"
+                    title="View on Map"
+                  >
+                    <MapIcon className="w-4 h-4" />
+                  </button>
+                  <div className="text-right min-w-[70px]">
+                    <p className="text-sm font-bold uppercase">{activity.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                    <p className={`text-[10px] font-bold uppercase tracking-tighter ${activity.status === "Approved" ? "text-green-600" : "text-amber-500"}`}>
+                      {activity.status}
+                    </p>
+                  </div>
                 </div>
               </div>
             ))}
@@ -255,10 +290,8 @@ export default function Home() {
         </div>
       </main>
 
-      <footer className="mt-auto py-8 text-center">
-        <p className="text-[10px] font-bold text-slate-400 dark:text-zinc-600 uppercase tracking-[0.2em]">
-          Powered by ERPNext Harmony
-        </p>
+      <footer className="mt-auto py-8 text-center text-slate-400 dark:text-zinc-600 font-bold uppercase tracking-[0.2em] text-[10px]">
+        Powered by ERPNext Harmony
       </footer>
     </div>
   );
