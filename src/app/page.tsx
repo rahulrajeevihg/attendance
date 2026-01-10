@@ -2,10 +2,28 @@
 
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { MapPin, Clock, LogIn, LogOut, CheckCircle2, AlertCircle, Map as MapIcon, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  MapPin,
+  Clock,
+  LogIn,
+  LogOut,
+  CheckCircle2,
+  AlertCircle,
+  Map as MapIcon,
+  ChevronDown,
+  ChevronUp,
+  User,
+  History as HistoryIcon,
+  Calendar as CalendarIcon,
+  CheckCircle,
+  Home as HomeIcon
+} from "lucide-react";
 
 import { erpnext } from "@/lib/erpnext";
 import { useRouter } from "next/navigation";
+
+import BottomNav from "@/components/BottomNav";
+import CalendarView from "@/components/CalendarView";
 
 const Map = dynamic(() => import("@/components/Map"), {
   ssr: false,
@@ -14,69 +32,42 @@ const Map = dynamic(() => import("@/components/Map"), {
 
 export default function Home() {
   const router = useRouter();
-  const [employeeInfo, setEmployeeInfo] = useState<{ id: string; name: string; hod: string } | null>(null);
+  const [employeeInfo, setEmployeeInfo] = useState<{ id: string; name: string; hod: string; isManager: boolean; image?: string } | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, history, approvals, calendar
+
   const [isSecure, setIsSecure] = useState(true);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [status, setStatus] = useState<"IDLE" | "CHECKING_IN" | "CHECKED_IN" | "CHECKING_OUT">("IDLE");
   const [lastAction, setLastAction] = useState<{ type: string; time: Date } | null>(null);
   const [showMap, setShowMap] = useState(false);
-  const [activities, setActivities] = useState<any[]>([
-    { id: 1, type: "Check In", time: new Date(Date.now() - 36000000), lat: 25.1358, lng: 55.2411, address: "Business Bay, Dubai, UAE", status: "Approved" },
-    { id: 2, type: "Check Out", time: new Date(Date.now() - 28000000), lat: 25.1401, lng: 55.2450, address: "Downtown Dubai, UAE", status: "Approved" }
-  ]);
-  const [historyMapLoc, setHistoryMapLoc] = useState<{ lat: number; lng: number } | null>(null);
   const [loadingLandmark, setLoadingLandmark] = useState(false);
+  const [myCheckins, setMyCheckins] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     const email = localStorage.getItem("user_email");
     const id = localStorage.getItem("employee_id");
     const name = localStorage.getItem("employee_name");
     const hod = localStorage.getItem("reports_to");
+    const image = localStorage.getItem("employee_image");
 
     if (!email || !id) {
       router.push("/login");
     } else {
-      setEmployeeInfo({ id, name: name || "Employee", hod: hod || "" });
+      erpnext.isManager(id).then(isMgr => {
+        setEmployeeInfo({
+          id,
+          name: name || "Employee",
+          hod: hod || "",
+          isManager: isMgr,
+          image: image || ""
+        });
+      });
+      fetchMyHistory(id);
     }
   }, [router]);
-
-  const requestLocation = () => {
-    setLocationError(null);
-    if (typeof window !== "undefined") {
-      setIsSecure(window.isSecureContext);
-      if (!window.isSecureContext) {
-        setLocationError("Insecure context. HTTPS is required for GPS on mobile.");
-        return;
-      }
-    }
-
-    if ("geolocation" in navigator) {
-      const watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          setLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          });
-          setLocationError(null);
-          navigator.geolocation.clearWatch(watchId);
-        },
-        (err) => {
-          let msg = "Location access denied.";
-          if (err.code === 1) msg = "Permission denied. Please enable GPS in settings.";
-          else if (err.code === 2) msg = "Location unavailable. Check your signal.";
-          else if (err.code === 3) msg = "Request timed out.";
-          setLocationError(msg);
-          console.error("Geolocation error:", err);
-          navigator.geolocation.clearWatch(watchId);
-        },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-      );
-    } else {
-      setLocationError("Geolocation is not supported by your browser.");
-    }
-  };
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -89,6 +80,52 @@ export default function Home() {
   useEffect(() => {
     requestLocation();
   }, []);
+
+  const requestLocation = () => {
+    setLocationError(null);
+    if (typeof window !== "undefined") {
+      setIsSecure(window.isSecureContext);
+      if (!window.isSecureContext) {
+        setLocationError("Insecure context. HTTPS is required for GPS on mobile.");
+        return;
+      }
+    }
+
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          });
+          setLocationError(null);
+        },
+        (err) => {
+          let msg = "Location access denied.";
+          if (err.code === 1) msg = "Permission denied. Please enable GPS in settings.";
+          else if (err.code === 2) msg = "Location unavailable. Check your signal.";
+          else if (err.code === 3) msg = "Request timed out.";
+          setLocationError(msg);
+          console.error("Geolocation error:", err);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    } else {
+      setLocationError("Geolocation is not supported by your browser.");
+    }
+  };
+
+  const fetchMyHistory = async (empId: string) => {
+    setLoadingHistory(true);
+    try {
+      const data = await erpnext.getMyCheckins(empId);
+      setMyCheckins(data);
+    } catch (error) {
+      console.error("Failed to fetch history:", error);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   const fetchLandmark = async (lat: number, lng: number) => {
     try {
@@ -117,7 +154,6 @@ export default function Home() {
       const landmark = await fetchLandmark(location.lat, location.lng);
       const checkinTime = new Date();
 
-      // POST to ERPNext
       await erpnext.postCheckin({
         employee: employeeInfo.id,
         log_type: type,
@@ -126,21 +162,14 @@ export default function Home() {
         longitude: location.lng,
         landmark: landmark,
         status: "Pending",
-        hod: employeeInfo.hod // Tagged HOD from employee record
+        hod: employeeInfo.hod
       });
 
       setStatus(type === "IN" ? "CHECKED_IN" : "IDLE");
       setLoadingLandmark(false);
+      setShowMap(false);
       setLastAction({ type: type === "IN" ? "Check-in" : "Check-out", time: checkinTime });
-      setActivities(prev => [{
-        id: Date.now(),
-        type: type === "IN" ? "Check In" : "Check Out",
-        time: checkinTime,
-        lat: location.lat,
-        lng: location.lng,
-        address: landmark,
-        status: "Pending"
-      }, ...prev]);
+      fetchMyHistory(employeeInfo.id);
     } catch (error: any) {
       console.error("ERPNext Sync Error:", error);
       setLocationError(`Sync Error: ${error.message}`);
@@ -149,210 +178,251 @@ export default function Home() {
     }
   };
 
-  const handleCheckIn = () => handleAction("IN");
-  const handleCheckOut = () => handleAction("OUT");
+  const renderContent = () => {
+    if (!employeeInfo) return null;
 
-  if (!employeeInfo) return null; // Wait for redirect or auth
+    if (activeTab === 'calendar') {
+      return <CalendarView employeeId={employeeInfo.id} />;
+    }
+
+    if (activeTab === 'approvals') {
+      return (
+        <div className="space-y-8 pb-20">
+          {employeeInfo.isManager && (
+            <div className="bg-blue-600 rounded-[2.5rem] p-6 text-white shadow-xl shadow-blue-500/20">
+              <h3 className="text-xl font-bold mb-2">Team Approvals</h3>
+              <p className="text-sm opacity-80 mb-4">You have pending requests from your team.</p>
+              <button
+                onClick={() => router.push('/hod')}
+                className="bg-white text-blue-600 px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg"
+              >
+                Open HOD Portal
+              </button>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <h3 className="text-lg font-bold px-2 text-slate-900 dark:text-white">My Pending Mobile Logs</h3>
+            {myCheckins.filter(c => c.status === 'Pending').length === 0 ? (
+              <div className="text-center py-10 bg-white dark:bg-zinc-900 rounded-[2rem] border border-dashed border-slate-200 dark:border-zinc-800">
+                <p className="text-slate-400 text-sm font-medium">No pending mobile logs.</p>
+              </div>
+            ) : (
+              myCheckins.filter(c => c.status === 'Pending').map((item: any) => (
+                <div key={item.name} className="bg-white dark:bg-zinc-900 p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-zinc-800 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                      <Clock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm">{item.log_type === 'IN' ? 'Check In' : 'Check Out'}</h4>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                        {new Date(item.checkin_time).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="bg-amber-50 text-amber-600 dark:bg-amber-500/10 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">Pending</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (activeTab === 'history') {
+      return (
+        <div className="space-y-6 pb-24">
+          <h2 className="text-2xl font-bold px-2">Mobile History</h2>
+          <div className="space-y-4">
+            {myCheckins.length === 0 ? (
+              <div className="text-center py-20 bg-white dark:bg-zinc-900 rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
+                <p className="text-slate-400 font-medium">No mobile check-in history.</p>
+              </div>
+            ) : (
+              myCheckins.map((item: any) => (
+                <div key={item.name} className="bg-white dark:bg-zinc-900 p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-zinc-800 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-2 h-8 rounded-full ${item.status === 'Approved' ? 'bg-green-500' :
+                        item.status === 'Rejected' ? 'bg-rose-500' : 'bg-amber-400'
+                        }`} />
+                      <div>
+                        <h4 className="font-bold text-sm tracking-tight">{item.log_type === 'IN' ? 'Check In' : 'Check Out'}</h4>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{new Date(item.checkin_time).toLocaleString()}</p>
+                      </div>
+                    </div>
+                    <span className={`text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider ${item.status === 'Approved' ? 'bg-green-50 text-green-600 dark:bg-green-500/10' :
+                      item.status === 'Rejected' ? 'bg-rose-50 text-rose-600 dark:bg-rose-500/10' :
+                        'bg-amber-50 text-amber-600 dark:bg-amber-500/10'
+                      }`}>
+                      {item.status}
+                    </span>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-zinc-800/50 p-3 rounded-2xl flex items-start gap-2">
+                    <MapPin className="w-3.5 h-3.5 text-blue-500 mt-0.5" />
+                    <p className="text-[11px] text-slate-600 dark:text-zinc-400 font-medium leading-relaxed">{item.landmark || 'No address'}</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // Default: Dashboard
+    return (
+      <div className="w-full space-y-12 pb-24 text-center">
+        <div className="flex flex-col items-center">
+          <div className="w-48 h-48 bg-white dark:bg-zinc-900 rounded-[4rem] shadow-2xl shadow-blue-500/10 flex items-center justify-center mb-8 border border-slate-100 dark:border-zinc-800 relative group transition-transform hover:scale-105 duration-500">
+            <Clock className="w-24 h-24 text-blue-600 group-hover:rotate-12 transition-transform duration-500" />
+            <div className="absolute inset-0 bg-blue-600/5 rounded-[4rem] animate-ping opacity-20" />
+          </div>
+
+          <div className="space-y-4">
+            <p className="text-slate-500 dark:text-zinc-400 text-xs font-bold uppercase tracking-[0.3em]">DAILY OVERVIEW</p>
+            <h2 className="text-5xl font-extrabold tracking-tight">
+              {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </h2>
+            <div className="flex items-center justify-center gap-2">
+              <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">
+                {currentTime.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-zinc-900 p-8 rounded-[3rem] shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-zinc-800">
+          <div className="flex justify-between items-center px-2">
+            <div className="text-left">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">CURRENT STATUS</p>
+              <p className={`text-lg font-bold ${status === 'CHECKED_IN' ? 'text-green-500' : 'text-slate-400'}`}>
+                {status === "CHECKED_IN" ? "Currently On-Shift" : "Inactive"}
+              </p>
+            </div>
+            {lastAction && (
+              <div className="text-right">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">LAST LOG</p>
+                <p className="text-sm font-bold">{lastAction.type} • {lastAction.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="pt-4 px-4">
+          <p className="text-slate-400 text-xs font-medium leading-relaxed italic">
+            "Tap the + button to capture your location and log your activity."
+          </p>
+        </div>
+      </div>
+    );
+  };
+
+  if (!employeeInfo) return (
+    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex flex-col items-center justify-center p-8">
+      <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex flex-col items-center p-4 sm:p-8 font-sans transition-colors duration-500 text-slate-900 dark:text-white">
-      <header className="w-full max-w-md flex justify-between items-center mb-12">
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
-            <Clock className="text-white w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold">Attendance</h1>
-            <a href="/hod" className="text-[10px] text-blue-500 font-bold hover:underline">HOD Portal</a>
-          </div>
+    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex flex-col items-center p-4 sm:p-8 font-sans transition-colors duration-500 text-slate-900 dark:text-white pb-32">
+      <header className="w-full max-w-md flex justify-between items-center mb-12 animate-in fade-in slide-in-from-top duration-700">
+        <div className="space-y-1">
+          <p className="text-slate-500 dark:text-zinc-400 text-[10px] font-bold uppercase tracking-[0.2em]">Employee Console</p>
+          <h1 className="text-2xl font-black tracking-tight">{employeeInfo.name}</h1>
         </div>
-        <div className="text-right">
-          <p className="text-sm font-medium text-slate-500 dark:text-zinc-400 capitalize">
-            {currentTime.toLocaleDateString('en-US', { weekday: 'long' })}
-          </p>
-          <p className="text-lg font-bold">
-            {currentTime.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit' })}
-          </p>
-        </div>
+        <button onClick={() => { localStorage.clear(); router.push('/login'); }} className="relative group">
+          <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white dark:border-zinc-800 shadow-lg group-hover:scale-105 transition-transform duration-300">
+            {employeeInfo.image ? (
+              <img
+                src={`https://erp.ihgind.com${employeeInfo.image}`}
+                alt={employeeInfo.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full bg-slate-100 dark:bg-zinc-800 flex items-center justify-center">
+                <User className="w-6 h-6 text-blue-500" />
+              </div>
+            )}
+          </div>
+          <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white dark:border-zinc-950 rounded-full" />
+        </button>
       </header>
 
-      <main className="w-full max-w-md space-y-6">
-        {/* Status Card */}
-        <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-zinc-800 relative overflow-hidden transition-all hover:shadow-2xl hover:scale-[1.01] duration-300">
-          <div className="absolute top-0 right-0 p-4">
-            {location ? (
-              <div className="flex items-center gap-1.5 bg-green-50 dark:bg-green-500/10 px-3 py-1 rounded-full border border-green-100 dark:border-green-500/20">
-                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                <span className="text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-wider">GPS Active</span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-500/10 px-3 py-1 rounded-full border border-amber-100 dark:border-amber-500/20">
-                <AlertCircle className="w-3 h-3 text-amber-500" />
-                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">No GPS</span>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <p className="text-slate-500 dark:text-zinc-400 text-sm font-medium">Welcome back,</p>
-            <h2 className="text-2xl font-bold">{employeeInfo.name}</h2>
-          </div>
-
-          <div className="mt-8 grid grid-cols-2 gap-4">
-            <div className="bg-slate-50 dark:bg-zinc-800/50 rounded-2xl p-4 transition-colors text-center">
-              <p className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1">Last Action</p>
-              <p className="text-sm font-bold">
-                {lastAction ? lastAction.type : "No records today"}
-              </p>
-              <p className="text-[10px] text-slate-500 dark:text-zinc-400 mt-1">
-                {lastAction ? lastAction.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "--:--"}
-              </p>
-            </div>
-            <div className="bg-slate-50 dark:bg-zinc-800/50 rounded-2xl p-4 transition-colors text-center">
-              <p className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mb-1">Current Shift</p>
-              <p className="text-sm font-bold">
-                General Shift
-              </p>
-              <p className="text-[10px] text-slate-500 dark:text-zinc-400 mt-1">09:00 AM - 06:00 PM</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Action Button */}
-        <div className="flex flex-col items-center gap-6">
-          <button
-            onClick={status === "CHECKED_IN" ? handleCheckOut : handleCheckIn}
-            disabled={status === "CHECKING_IN" || status === "CHECKING_OUT" || !location}
-            className={`
-              relative w-56 h-56 rounded-full flex flex-col items-center justify-center gap-3 transition-all duration-500 overflow-hidden
-              ${status === "CHECKED_IN"
-                ? "bg-rose-500 hover:bg-rose-600 shadow-2xl shadow-rose-500/40"
-                : "bg-blue-600 hover:bg-blue-700 shadow-2xl shadow-blue-600/40"}
-              ${(status === "CHECKING_IN" || status === "CHECKING_OUT" || !location) ? "opacity-60 grayscale cursor-not-allowed" : "active:scale-95"}
-            `}
-          >
-            {/* Ripples */}
-            <div className="absolute inset-0 bg-white/20 animate-ping opacity-20" />
-
-            {(status === "CHECKING_IN" || status === "CHECKING_OUT") ? (
-              <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin" />
-            ) : status === "CHECKED_IN" ? (
-              <>
-                <LogOut className="w-16 h-16 text-white" />
-                <span className="text-xl font-bold text-white uppercase tracking-widest">Check Out</span>
-              </>
-            ) : (
-              <>
-                <LogIn className="w-16 h-16 text-white" />
-                <span className="text-xl font-bold text-white uppercase tracking-widest">Check In</span>
-              </>
-            )}
-          </button>
-
-          {(!isSecure || locationError) && (
-            <div className="w-full flex flex-col items-center gap-4">
-              {!isSecure && (
-                <div className="flex flex-col gap-2 p-4 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-2xl w-full">
-                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-bold text-sm">
-                    <AlertCircle className="w-4 h-4" />
-                    <span>Insecure Context (HTTP)</span>
-                  </div>
-                  <p className="text-xs text-amber-500 dark:text-amber-500/80 leading-relaxed">
-                    Browser security (SSL) is required for GPS. Please access via **HTTPS** or as a **Trusted PWA**.
-                  </p>
-                </div>
-              )}
-              {locationError && (
-                <div className="flex items-center gap-2 text-rose-500 bg-rose-50 dark:bg-rose-500/10 px-4 py-3 rounded-2xl text-sm font-medium border border-rose-100 dark:border-rose-500/20 w-full justify-center">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{locationError}</span>
-                </div>
-              )}
-              <button
-                onClick={requestLocation}
-                className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-blue-600/30 active:scale-95 transition-all text-sm uppercase tracking-widest"
-              >
-                Enable Location Access
-              </button>
-            </div>
-          )}
-
-          {!locationError && location && (
-            <div className="w-full flex flex-col gap-3">
-              <button
-                onClick={() => {
-                  setShowMap(!showMap);
-                  setHistoryMapLoc(null); // Reset to live location
-                }}
-                className="flex items-center justify-between w-full bg-white dark:bg-zinc-900 px-4 py-3 rounded-2xl text-sm font-semibold border border-slate-100 dark:border-zinc-800 shadow-sm text-slate-700 dark:text-zinc-300 hover:bg-slate-50 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <MapIcon className="w-4 h-4 text-blue-500" />
-                  <span>{historyMapLoc ? `Historical: ${historyMapLoc.lat.toFixed(4)}, ${historyMapLoc.lng.toFixed(4)}` : `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`}</span>
-                </div>
-                {showMap ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-              </button>
-
-              {showMap && (
-                <div className="h-64 w-full rounded-3xl overflow-hidden shadow-xl border-4 border-white dark:border-zinc-800 animate-in fade-in slide-in-from-top-4 duration-500">
-                  <Map lat={historyMapLoc?.lat || location.lat} lng={historyMapLoc?.lng || location.lng} />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Recent History Preview */}
-        <div className="pt-4">
-          <div className="flex justify-between items-center mb-4 px-2">
-            <h3 className="text-sm font-bold uppercase tracking-wider">Recent Activity</h3>
-            <button className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest hover:underline">View All</button>
-          </div>
-          <div className="space-y-3">
-            {activities.map((activity) => (
-              <div key={activity.id} className="bg-white dark:bg-zinc-900 p-4 rounded-2xl flex items-center justify-between border border-slate-100 dark:border-zinc-800 shadow-sm hover:border-blue-100 dark:hover:border-blue-900/30 transition-all group">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-zinc-800 flex items-center justify-center group-hover:bg-blue-50 dark:group-hover:bg-blue-950/30 transition-colors">
-                    <CheckCircle2 className={`w-5 h-5 ${activity.type === "Check In" ? "text-green-500" : "text-rose-500"}`} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold capitalize">{activity.type}</p>
-                    <p className="text-[10px] text-slate-500 dark:text-zinc-400 line-clamp-1 max-w-[150px]">
-                      {activity.address || `Lat: ${activity.lat.toFixed(2)}, Lng: ${activity.lng.toFixed(2)}`}
-                    </p>
-                    <p className="text-[10px] text-slate-400 dark:text-zinc-500">
-                      {activity.time.toLocaleDateString([], { month: 'short', day: '2-digit', year: 'numeric' })}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={() => {
-                      setHistoryMapLoc({ lat: activity.lat, lng: activity.lng });
-                      setShowMap(true);
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors text-blue-500"
-                    title="View on Map"
-                  >
-                    <MapIcon className="w-4 h-4" />
-                  </button>
-                  <div className="text-right min-w-[70px]">
-                    <p className="text-sm font-bold uppercase">{activity.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                    <p className={`text-[10px] font-bold uppercase tracking-tighter ${activity.status === "Approved" ? "text-green-600" : "text-amber-500"}`}>
-                      {activity.status}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      <main className="w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-1000">
+        {renderContent()}
       </main>
 
-      <footer className="mt-auto py-8 text-center text-slate-400 dark:text-zinc-600 font-bold uppercase tracking-[0.2em] text-[10px]">
-        Powered by ERPNext Harmony
-      </footer>
+      {showMap && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-300">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowMap(false)} />
+          <div className="relative w-full max-w-lg bg-white dark:bg-zinc-900 rounded-t-[3.5rem] sm:rounded-[4rem] p-8 shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-500">
+            <div className="w-12 h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full mx-auto mb-8 sm:hidden" />
+
+            <div className="flex justify-between items-center mb-8">
+              <h3 className="text-2xl font-black">Sync Location</h3>
+              <button onClick={() => setShowMap(false)} className="bg-slate-50 dark:bg-zinc-800 p-3 rounded-full hover:rotate-90 transition-transform duration-300">
+                <Clock className="w-6 h-6 rotate-45 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="h-64 w-full rounded-[3rem] overflow-hidden border border-slate-100 dark:border-zinc-800 mb-8 relative">
+              <Map lat={location?.lat || 25.2048} lng={location?.lng || 55.2708} />
+              {!location && (
+                <div className="absolute inset-0 bg-white/50 dark:bg-zinc-900/50 flex items-center justify-center backdrop-blur-sm">
+                  <span className="font-bold text-xs uppercase tracking-widest text-blue-600 animate-pulse">Locating...</span>
+                </div>
+              )}
+            </div>
+
+            {locationError && (
+              <div className="bg-rose-50 dark:bg-rose-500/10 p-5 rounded-3xl mb-8 text-rose-500 text-sm font-bold flex items-center gap-3 border border-rose-100 dark:border-rose-500/20">
+                <AlertCircle className="w-5 h-5 shrink-0" />
+                <span>{locationError}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-6">
+              <button
+                onClick={() => handleAction("IN")}
+                disabled={status === "CHECKING_IN" || status === "CHECKED_IN" || !location}
+                className={`flex flex-col items-center gap-3 py-8 rounded-[3rem] font-black text-xs uppercase tracking-widest transition-all ${status === "CHECKED_IN" ? "bg-slate-50 text-slate-300 dark:bg-zinc-800/50 cursor-not-allowed" :
+                  "bg-blue-600 text-white shadow-xl shadow-blue-500/30 active:scale-95"
+                  }`}
+              >
+                {status === "CHECKING_IN" ? <span className="animate-spin text-3xl">⏳</span> : <LogIn className="w-10 h-10 mb-2" />}
+                Check In
+              </button>
+              <button
+                onClick={() => handleAction("OUT")}
+                disabled={status === "CHECKING_OUT" || status === "IDLE" || !location}
+                className={`flex flex-col items-center gap-3 py-8 rounded-[3rem] font-black text-xs uppercase tracking-widest transition-all ${status === "IDLE" ? "bg-slate-50 text-slate-300 dark:bg-zinc-800/50 cursor-not-allowed" :
+                  "bg-rose-600 text-white shadow-xl shadow-rose-500/30 active:scale-95"
+                  }`}
+              >
+                {status === "CHECKING_OUT" ? <span className="animate-spin text-3xl">⏳</span> : <LogOut className="w-10 h-10 mb-2" />}
+                Check Out
+              </button>
+            </div>
+            {loadingLandmark && (
+              <p className="text-center mt-6 text-[10px] font-black text-blue-500 uppercase tracking-[0.2em] animate-pulse">
+                Verifying Reverse Geocode...
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      <BottomNav
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onFabClick={() => {
+          setShowMap(true);
+          requestLocation();
+        }}
+        isManager={employeeInfo.isManager}
+      />
     </div>
   );
 }

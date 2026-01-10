@@ -1,5 +1,5 @@
 const ERPNEXT_URL = 'https://erp.ihgind.com';
-const TOKEN = 'token 5a58f74d3a6048c:b76e8329ac883ff';
+const TOKEN = 'token e9d536fe3a27e08:67686aeccf657e3';
 
 export interface MobileCheckinData {
     employee: string;
@@ -14,6 +14,14 @@ export interface MobileCheckinData {
 
 export const erpnext = {
     async postCheckin(data: MobileCheckinData) {
+        // ERPNext expects Datetime in 'YYYY-MM-DD HH:mm:ss' format
+        const formattedData = {
+            ...data,
+            checkin_time: data.checkin_time.replace('T', ' ').split('.')[0]
+        };
+
+        console.log("POSTING to ERPNext:", formattedData);
+
         const response = await fetch(`${ERPNEXT_URL}/api/resource/Mobile Checkin`, {
             method: 'POST',
             headers: {
@@ -21,22 +29,37 @@ export const erpnext = {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
             },
-            body: JSON.stringify(data),
+            body: JSON.stringify(formattedData),
         });
 
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error._server_messages || 'Failed to post check-in to ERPNext');
+            let errorMsg = 'Failed to post check-in to ERPNext';
+            try {
+                const error = await response.json();
+                errorMsg = error._server_messages || error.message || errorMsg;
+                if (typeof errorMsg === 'string' && errorMsg.startsWith('[')) {
+                    const parsed = JSON.parse(errorMsg);
+                    errorMsg = parsed[0]?.message || errorMsg;
+                }
+            } catch (e) {
+                const text = await response.text();
+                console.error("ERPNext raw error:", text);
+                errorMsg = `Server Error (500): Check ERPNext logs.`;
+            }
+            throw new Error(errorMsg);
         }
 
         return await response.json();
     },
 
     async getPendingCheckins(hodId?: string) {
-        let url = `${ERPNEXT_URL}/api/resource/Mobile Checkin?fields=["*"]&filters=[["status", "=", "Pending"]]`;
+        let filters: any[] = [["status", "=", "Pending"]];
         if (hodId) {
-            url += `&filters=[["hod", "=", "${hodId}"]]`; // Simple filter logic
+            filters.push(["hod", "=", hodId]);
+            filters.push(["employee", "!=", hodId]); // Prevent self-approval
         }
+
+        const url = `${ERPNEXT_URL}/api/resource/Mobile Checkin?fields=["*"]&filters=${JSON.stringify(filters)}`;
 
         const response = await fetch(url, {
             method: 'GET',
@@ -49,6 +72,52 @@ export const erpnext = {
 
         if (!response.ok) {
             throw new Error('Failed to fetch pending check-ins');
+        }
+
+        const data = await response.json();
+        return data.data;
+    },
+
+    async getMyCheckins(employeeId: string) {
+        const filters = [["employee", "=", employeeId]];
+        const url = `${ERPNEXT_URL}/api/resource/Mobile Checkin?fields=["*"]&filters=${JSON.stringify(filters)}&order_by=checkin_time desc`;
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': TOKEN,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch your check-ins');
+        }
+
+        const data = await response.json();
+        return data.data;
+    },
+
+    async getOfficialCheckins(employeeId: string, fromDate: string, toDate: string) {
+        const filters = [
+            ["employee", "=", employeeId],
+            ["time", ">=", fromDate],
+            ["time", "<=", toDate]
+        ];
+        const url = `${ERPNEXT_URL}/api/resource/Employee Checkin?fields=["*"]&filters=${JSON.stringify(filters)}&order_by=time asc`;
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': TOKEN,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch official attendance');
         }
 
         const data = await response.json();
@@ -87,12 +156,39 @@ export const erpnext = {
     },
 
     async getEmployee(email: string) {
-        const url = `${ERPNEXT_URL}/api/resource/Employee?fields=["name","employee_name","reports_to"]&filters=[["user_id", "=", "${email}"]]`;
+        const url = `${ERPNEXT_URL}/api/resource/Employee?fields=["name","employee_name","reports_to","image"]&filters=[["user_id", "=", "${email}"]]`;
         const response = await fetch(url, {
             method: 'GET',
             headers: { 'Authorization': TOKEN },
         });
         const data = await response.json();
+        console.log("ERPNext Employee Data:", data);
         return data.data?.[0] || null;
+    },
+
+    async getEmployeeImages(employeeIds: string[]) {
+        if (employeeIds.length === 0) return {};
+        const filters = JSON.stringify([["name", "in", employeeIds]]);
+        const url = `${ERPNEXT_URL}/api/resource/Employee?fields=["name","image"]&filters=${filters}`;
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { 'Authorization': TOKEN },
+        });
+        const data = await response.json();
+        const imageMap: Record<string, string> = {};
+        data.data?.forEach((e: any) => {
+            if (e.image) imageMap[e.name] = `${ERPNEXT_URL}${e.image}`;
+        });
+        return imageMap;
+    },
+
+    async isManager(employeeId: string) {
+        const url = `${ERPNEXT_URL}/api/resource/Employee?filters=[["reports_to", "=", "${employeeId}"]]&limit=1`;
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { 'Authorization': TOKEN },
+        });
+        const data = await response.json();
+        return data.data && data.data.length > 0;
     }
 };

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { CheckCircle2, XCircle, Map as MapIcon, ChevronLeft, User, Clock, MapPin } from "lucide-react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 
 import { erpnext } from "@/lib/erpnext";
 
@@ -15,6 +16,7 @@ export default function HODDashboard() {
     const router = useRouter();
     const [hodInfo, setHodInfo] = useState<{ id: string; name: string } | null>(null);
     const [pendingActivities, setPendingActivities] = useState<any[]>([]);
+    const [empImages, setEmpImages] = useState<Record<string, string>>({});
     const [selectedMap, setSelectedMap] = useState<{ lat: number; lng: number; name: string } | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -30,15 +32,20 @@ export default function HODDashboard() {
     }, [router]);
 
     const fetchActivities = async () => {
-        if (!hodInfo) return; // Guard clause: only fetch if hodInfo is available
+        if (!hodInfo) return;
         setLoading(true);
         try {
-            // Pass HOD ID to filter records assigned to them
             const data = await erpnext.getPendingCheckins(hodInfo.id);
-            // Map ERPNext fields to UI fields
+
+            // Fetch unique employee images using the new erpnext helper
+            const uniqueEmpIds = Array.from(new Set(data.map((i: any) => i.employee))) as string[];
+            const imageMap = await erpnext.getEmployeeImages(uniqueEmpIds);
+            setEmpImages(imageMap);
+
             const formatted = data.map((item: any) => ({
-                id: item.name, // ERPNext document name
+                id: item.name,
                 name: item.employee,
+                employee_name: item.employee_name, // If available in Mobile Checkin
                 type: item.log_type === "IN" ? "Check In" : "Check Out",
                 time: new Date(item.checkin_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 date: new Date(item.checkin_time).toLocaleDateString([], { month: 'short', day: '2-digit', year: 'numeric' }),
@@ -85,7 +92,7 @@ export default function HODDashboard() {
                 <div className="mb-2 flex justify-between items-end">
                     <div>
                         <h2 className="text-2xl font-bold">Team Approvals</h2>
-                        <p className="text-sm text-slate-500 dark:text-zinc-400">Reviewing records for {hodInfo.name}</p>
+                        <p className="text-sm text-slate-500 dark:text-zinc-400">Reviewing records for {hodInfo?.name}</p>
                     </div>
                     <button
                         onClick={fetchActivities}
@@ -134,11 +141,19 @@ export default function HODDashboard() {
                             <div key={activity.id} className="bg-white dark:bg-zinc-900 p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-zinc-800 hover:shadow-md transition-all group">
                                 <div className="flex justify-between items-start mb-4">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-zinc-800 flex items-center justify-center">
-                                            <User className="w-6 h-6 text-slate-400" />
+                                        <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-zinc-800 flex items-center justify-center overflow-hidden border border-slate-100 dark:border-zinc-800 shadow-sm">
+                                            {empImages[activity.name] ? (
+                                                <img
+                                                    src={empImages[activity.name]}
+                                                    alt={activity.name}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : (
+                                                <User className="w-6 h-6 text-slate-400" />
+                                            )}
                                         </div>
                                         <div>
-                                            <h4 className="font-bold text-lg">{activity.name}</h4>
+                                            <h4 className="font-bold text-lg">{activity.employee_name || activity.name}</h4>
                                             <div className="flex items-center gap-1.5 text-slate-500 dark:text-zinc-400">
                                                 <Clock className="w-3 h-3" />
                                                 <span className="text-[10px] font-bold uppercase tracking-wider">{activity.type} • {activity.time}</span>

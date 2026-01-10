@@ -3,7 +3,7 @@
 import Map, { Marker } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
-const MAPBOX_TOKEN = 'YOUR_MAPBOX_ACCESS_TOKEN'; // Replace with actual Mapbox token
+const MAPBOX_TOKEN = 'pk.eyJ1IjoicmFodWxyYWplZXYzMTIiLCJhIjoiY21rODdtMjBwMTdqZTNjcjVlZDQwZnBlaSJ9.3uKDZg_IkLtHrKoELv7w0Q'; // Replace with actual Mapbox token
 
 export default function MapboxMap({ lat, lng }: { lat: number; lng: number }) {
     const position = { latitude: lat, longitude: lng };

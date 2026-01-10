@@ -28,11 +28,12 @@ export default function LoginPage() {
                 throw new Error("No Employee record linked to this user in ERPNext.");
             }
 
-            // 3. Store session
+            // Store session info
             localStorage.setItem("user_email", email);
             localStorage.setItem("employee_id", employee.name);
             localStorage.setItem("employee_name", employee.employee_name);
             localStorage.setItem("reports_to", employee.reports_to || "");
+            localStorage.setItem("employee_image", employee.image || "");
 
             router.push("/");
         } catch (err: any) {
