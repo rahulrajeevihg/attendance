@@ -236,7 +236,11 @@ export default function Home() {
       const todaysLogs = data.filter((log: any) => new Date(log.checkin_time) >= today);
 
       // Determine if checked in (start timer even if pending)
-      const lastLog = todaysLogs[0]; // Ordered by checkin_time desc
+      // Sort by time descending to get the most recent log first
+      const sortedLogs = [...todaysLogs].sort((a, b) =>
+        new Date(b.checkin_time).getTime() - new Date(a.checkin_time).getTime()
+      );
+      const lastLog = sortedLogs[0];
       if (lastLog && lastLog.log_type === 'IN' && lastLog.status !== 'Rejected') {
         setStatus("CHECKED_IN");
         setActiveStartTime(new Date(lastLog.checkin_time));
