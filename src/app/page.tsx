@@ -435,6 +435,17 @@ export default function Home() {
     }
   };
 
+  // Format local datetime for ERPNext (not UTC)
+  const formatLocalDatetime = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  };
+
   const handleAction = async (type: "IN" | "OUT") => {
     if (!location || !employeeInfo) {
       setLocationError("Location and Session are required.");
@@ -451,7 +462,7 @@ export default function Home() {
       const checkinData = {
         employee: employeeInfo.id,
         log_type: type,
-        checkin_time: checkinTime.toISOString().replace('T', ' ').split('.')[0],
+        checkin_time: formatLocalDatetime(checkinTime),
         latitude: location.lat,
         longitude: location.lng,
         landmark: landmark,
@@ -475,7 +486,7 @@ export default function Home() {
       await erpnext.postCheckin({
         employee: employeeInfo.id,
         log_type: type,
-        checkin_time: checkinTime.toISOString(),
+        checkin_time: formatLocalDatetime(checkinTime),
         latitude: location.lat,
         longitude: location.lng,
         landmark: landmark,
