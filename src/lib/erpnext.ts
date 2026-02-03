@@ -15,9 +15,12 @@ export interface MobileCheckinData {
 export const erpnext = {
     async postCheckin(data: MobileCheckinData) {
         // ERPNext expects Datetime in 'YYYY-MM-DD HH:mm:ss' format
+        // Only format if it's an ISO string (contains 'T'), otherwise it's already formatted
         const formattedData = {
             ...data,
-            checkin_time: data.checkin_time.replace('T', ' ').split('.')[0]
+            checkin_time: data.checkin_time.includes('T')
+                ? data.checkin_time.replace('T', ' ').split('.')[0]
+                : data.checkin_time
         };
 
         console.log("POSTING to ERPNext:", formattedData);
