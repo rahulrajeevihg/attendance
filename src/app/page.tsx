@@ -56,6 +56,141 @@ export default function Home() {
   const [selectedApprovalMap, setSelectedApprovalMap] = useState<{ lat: number; lng: number; name: string } | null>(null);
   const [loadingApprovals, setLoadingApprovals] = useState(false);
   const [approvalsError, setApprovalsError] = useState<string | null>(null);
+  const [previousPendingCount, setPreviousPendingCount] = useState(0);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
+  const [isOnline, setIsOnline] = useState(true);
+  const [offlineQueueCount, setOfflineQueueCount] = useState(0);
+
+  // Register service worker on mount
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').then(
+        (registration) => console.log('[App] Service Worker registered:', registration),
+        (error) => console.error('[App] Service Worker registration failed:', error)
+      );
+    }
+  }, []);
+
+  // Monitor online/offline status
+  useEffect(() => {
+    const updateOnlineStatus = () => {
+      setIsOnline(navigator.onLine);
+      if (navigator.onLine) {
+        console.log('[App] Back online! Triggering sync...');
+        // Trigger background sync
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then(reg => {
+            // Type guard for sync API
+            if ('sync' in reg) {
+              return (reg as any).sync.register('sync-checkins');
+            }
+          }).catch(err => console.error('[App] Sync registration failed:', err));
+        }
+      }
+    };
+
+    setIsOnline(navigator.onLine);
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+
+    return () => {
+      window.removeEventListener('online', updateOnlineStatus);
+      window.removeEventListener('offline', updateOnlineStatus);
+    };
+  }, []);
+
+  // Listen for service worker messages (sync events)
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data.type === 'SYNC_START') {
+          console.log('[App] Sync started:', event.data.count, 'items');
+        } else if (event.data.type === 'SYNC_COMPLETE') {
+          console.log('[App] Sync completed');
+          setOfflineQueueCount(0);
+          if (employeeInfo) fetchMyHistory(employeeInfo.id);
+        }
+      });
+    }
+  }, [employeeInfo]);
+
+  // Check offline queue count on mount
+  useEffect(() => {
+    checkOfflineQueue();
+  }, []);
+
+  const checkOfflineQueue = async () => {
+    try {
+      const db = await openOfflineDB();
+      const tx = db.transaction('queue', 'readonly');
+      const store = tx.objectStore('queue');
+      const count = await new Promise<number>((resolve) => {
+        const req = store.count();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(0);
+      });
+      setOfflineQueueCount(count);
+    } catch (error) {
+      console.error('[App] Failed to check offline queue:', error);
+    }
+  };
+
+  const openOfflineDB = (): Promise<IDBDatabase> => {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('offline-checkins', 1);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains('queue')) {
+          db.createObjectStore('queue', { keyPath: 'id', autoIncrement: true });
+        }
+      };
+    });
+  };
+
+  const saveToOfflineQueue = async (checkin: any) => {
+    try {
+      const db = await openOfflineDB();
+      const tx = db.transaction('queue', 'readwrite');
+      const store = tx.objectStore('queue');
+      await new Promise((resolve, reject) => {
+        const req = store.add({ data: checkin, timestamp: Date.now() });
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      await checkOfflineQueue();
+      console.log('[App] Saved to offline queue');
+    } catch (error) {
+      console.error('[App] Failed to save to offline queue:', error);
+      throw error;
+    }
+  };
+
+  // Request notification permission for managers
+  useEffect(() => {
+    if (employeeInfo?.isManager && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().then(permission => {
+          setNotificationPermission(permission);
+          console.log('[Notifications] Permission:', permission);
+        });
+      } else {
+        setNotificationPermission(Notification.permission);
+      }
+    }
+  }, [employeeInfo]);
+
+  // Auto-refresh pending approvals for managers (every 30 seconds)
+  useEffect(() => {
+    if (!employeeInfo?.isManager) return;
+
+    const interval = setInterval(() => {
+      fetchPendingApprovals(employeeInfo.id);
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [employeeInfo]);
 
   useEffect(() => {
     const email = localStorage.getItem("user_email");
@@ -110,13 +245,13 @@ export default function Home() {
         setActiveStartTime(null);
       }
 
-      // Calculate total approved duration for today
+      // Calculate total work duration for today (includes Pending and Approved, excludes Rejected)
       let totalSeconds = 0;
-      const approvedTodaysLogs = todaysLogs.filter((l: any) => l.status === 'Approved').reverse();
+      const validTodaysLogs = todaysLogs.filter((l: any) => l.status !== 'Rejected').reverse();
 
-      for (let i = 0; i < approvedTodaysLogs.length; i += 2) {
-        const inLog = approvedTodaysLogs[i];
-        const outLog = approvedTodaysLogs[i + 1];
+      for (let i = 0; i < validTodaysLogs.length; i += 2) {
+        const inLog = validTodaysLogs[i];
+        const outLog = validTodaysLogs[i + 1];
         if (inLog && outLog && inLog.log_type === 'IN' && outLog.log_type === 'OUT') {
           totalSeconds += (new Date(outLog.checkin_time).getTime() - new Date(inLog.checkin_time).getTime()) / 1000;
         }
@@ -161,6 +296,20 @@ export default function Home() {
         lng: item.longitude,
         address: item.landmark || "No address captured"
       }));
+
+      // Trigger notification if count increased
+      const newCount = formatted.length;
+      if (previousPendingCount > 0 && newCount > previousPendingCount) {
+        const newItems = newCount - previousPendingCount;
+        const latestItem = formatted[0];
+        showNotification(
+          `New Check-in Request${newItems > 1 ? 's' : ''}`,
+          `${latestItem.employee_name || latestItem.name} has submitted a ${latestItem.type} request${newItems > 1 ? ` (+${newItems - 1} more)` : ''}`,
+          newCount
+        );
+      }
+      setPreviousPendingCount(newCount);
+
       setPendingActivities(formatted);
       setApprovalsError(null);
     } catch (err: any) {
@@ -168,6 +317,20 @@ export default function Home() {
       console.error(err);
     } finally {
       setLoadingApprovals(false);
+    }
+  };
+
+  const showNotification = (title: string, body: string, badge?: number) => {
+    if (notificationPermission !== 'granted') return;
+
+    if ('Notification' in window) {
+      new Notification(title, {
+        body,
+        icon: '/app_icon_192.png',
+        badge: '/app_icon_192.png',
+        tag: 'approval-notification',
+        requireInteraction: false,
+      });
     }
   };
 
@@ -285,6 +448,30 @@ export default function Home() {
       const landmark = await fetchLandmark(location.lat, location.lng);
       const checkinTime = new Date();
 
+      const checkinData = {
+        employee: employeeInfo.id,
+        log_type: type,
+        checkin_time: checkinTime.toISOString().replace('T', ' ').split('.')[0],
+        latitude: location.lat,
+        longitude: location.lng,
+        landmark: landmark,
+        status: "Pending",
+        hod: employeeInfo.hod
+      };
+
+      // Check if offline
+      if (!isOnline) {
+        console.log('[App] Offline - queuing check-in');
+        await saveToOfflineQueue(checkinData);
+        setStatus(type === "IN" ? "CHECKED_IN" : "IDLE");
+        setLoadingLandmark(false);
+        setShowMap(false);
+        setLastAction({ type: type === "IN" ? "Check-in" : "Check-out", time: checkinTime });
+        alert(`${type === "IN" ? "Check-in" : "Check-out"} saved offline. Will sync when online.`);
+        return;
+      }
+
+      // Online - post directly
       await erpnext.postCheckin({
         employee: employeeInfo.id,
         log_type: type,
@@ -614,6 +801,24 @@ export default function Home() {
         <div className="space-y-1">
           <p className="text-slate-500 dark:text-zinc-400 text-[10px] font-bold uppercase tracking-[0.2em]">Employee Console</p>
           <h1 className="text-2xl font-black tracking-tight">{employeeInfo.name}</h1>
+          {/* Offline indicator */}
+          {!isOnline && (
+            <div className="flex items-center gap-2 mt-2">
+              <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+              <span className="text-[9px] font-bold text-amber-600 uppercase tracking-wider">Offline Mode</span>
+              {offlineQueueCount > 0 && (
+                <span className="text-[9px] font-bold bg-amber-100 dark:bg-amber-900/20 text-amber-700 px-2 py-0.5 rounded-full">
+                  {offlineQueueCount} queued
+                </span>
+              )}
+            </div>
+          )}
+          {isOnline && offlineQueueCount > 0 && (
+            <div className="flex items-center gap-2 mt-2">
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+              <span className="text-[9px] font-bold text-blue-600 uppercase tracking-wider">Syncing...</span>
+            </div>
+          )}
         </div>
         <button onClick={() => { localStorage.clear(); router.push('/login'); }} className="relative group">
           <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white dark:border-zinc-800 shadow-lg group-hover:scale-105 transition-transform duration-300">
