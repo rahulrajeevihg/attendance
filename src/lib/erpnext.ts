@@ -99,6 +99,30 @@ export const erpnext = {
         return data.data;
     },
 
+    async getTeamCheckins(hodId: string) {
+        const filters = [
+            ["hod", "=", hodId],
+            ["employee", "!=", hodId]
+        ];
+        const url = `${ERPNEXT_URL}/api/resource/Mobile Checkin?fields=["*"]&filters=${JSON.stringify(filters)}&order_by=checkin_time desc`;
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': TOKEN,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch team check-ins');
+        }
+
+        const data = await response.json();
+        return data.data;
+    },
+
     async getOfficialCheckins(employeeId: string, fromDate: string, toDate: string) {
         const filters = [
             ["employee", "=", employeeId],

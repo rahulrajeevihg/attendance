@@ -46,8 +46,16 @@ export default function Home() {
   const [loadingLandmark, setLoadingLandmark] = useState(false);
   const [myCheckins, setMyCheckins] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [teamCheckins, setTeamCheckins] = useState<any[]>([]);
+  const [loadingTeamHistory, setLoadingTeamHistory] = useState(false);
   const [totalWorkTime, setTotalWorkTime] = useState(0); // in seconds
   const [activeStartTime, setActiveStartTime] = useState<Date | null>(null);
+
+  const [pendingActivities, setPendingActivities] = useState<any[]>([]);
+  const [empImages, setEmpImages] = useState<Record<string, string>>({});
+  const [selectedApprovalMap, setSelectedApprovalMap] = useState<{ lat: number; lng: number; name: string } | null>(null);
+  const [loadingApprovals, setLoadingApprovals] = useState(false);
+  const [approvalsError, setApprovalsError] = useState<string | null>(null);
 
   useEffect(() => {
     const email = localStorage.getItem("user_email");
@@ -60,20 +68,25 @@ export default function Home() {
       router.push("/login");
     } else {
       erpnext.isManager(id).then(isMgr => {
-        setEmployeeInfo({
+        const info = {
           id,
           name: name || "Employee",
           hod: hod || "",
           isManager: isMgr,
           image: image || ""
-        });
+        };
+        setEmployeeInfo(info);
+        fetchEverything(id, isMgr);
       });
-      fetchEverything(id);
     }
   }, [router]);
 
-  const fetchEverything = async (id: string) => {
+  const fetchEverything = async (id: string, isManager: boolean) => {
     await fetchMyHistory(id);
+    if (isManager) {
+      await fetchTeamHistory(id);
+      await fetchPendingApprovals(id);
+    }
   };
 
   const fetchMyHistory = async (empId: string) => {
@@ -87,9 +100,9 @@ export default function Home() {
       today.setHours(0, 0, 0, 0);
       const todaysLogs = data.filter((log: any) => new Date(log.checkin_time) >= today);
 
-      // Determine if checked in
+      // Determine if checked in (start timer even if pending)
       const lastLog = todaysLogs[0]; // Ordered by checkin_time desc
-      if (lastLog && lastLog.log_type === 'IN' && lastLog.status === 'Approved') {
+      if (lastLog && lastLog.log_type === 'IN' && lastLog.status !== 'Rejected') {
         setStatus("CHECKED_IN");
         setActiveStartTime(new Date(lastLog.checkin_time));
       } else {
@@ -117,6 +130,47 @@ export default function Home() {
     }
   };
 
+  const fetchTeamHistory = async (hodId: string) => {
+    setLoadingTeamHistory(true);
+    try {
+      const data = await erpnext.getTeamCheckins(hodId);
+      setTeamCheckins(data);
+    } catch (error) {
+      console.error("Failed to fetch team history:", error);
+    } finally {
+      setLoadingTeamHistory(false);
+    }
+  };
+
+  const fetchPendingApprovals = async (hodId: string) => {
+    setLoadingApprovals(true);
+    try {
+      const data = await erpnext.getPendingCheckins(hodId);
+      const uniqueEmpIds = Array.from(new Set(data.map((i: any) => i.employee))) as string[];
+      const imageMap = await erpnext.getEmployeeImages(uniqueEmpIds);
+      setEmpImages(imageMap);
+
+      const formatted = data.map((item: any) => ({
+        id: item.name,
+        name: item.employee,
+        employee_name: item.employee_name,
+        type: item.log_type === "IN" ? "Check In" : "Check Out",
+        time: new Date(item.checkin_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        date: new Date(item.checkin_time).toLocaleDateString([], { month: 'short', day: '2-digit', year: 'numeric' }),
+        lat: item.latitude,
+        lng: item.longitude,
+        address: item.landmark || "No address captured"
+      }));
+      setPendingActivities(formatted);
+      setApprovalsError(null);
+    } catch (err: any) {
+      setApprovalsError("Failed to load activities from ERPNext");
+      console.error(err);
+    } finally {
+      setLoadingApprovals(false);
+    }
+  };
+
   const handleDelete = async (name: string) => {
     if (!confirm("Are you sure you want to delete this pending check-in?")) return;
     try {
@@ -124,6 +178,15 @@ export default function Home() {
       if (employeeInfo) fetchMyHistory(employeeInfo.id);
     } catch (err: any) {
       alert(err.message);
+    }
+  };
+
+  const handleApprovalAction = async (id: string, status: 'Approved' | 'Rejected') => {
+    try {
+      await erpnext.updateStatus(id, status);
+      setPendingActivities(prev => prev.filter(a => a.id !== id));
+    } catch (err) {
+      alert(`Failed to ${status} activity`);
     }
   };
 
@@ -257,15 +320,113 @@ export default function Home() {
       return (
         <div className="space-y-8 pb-20">
           {employeeInfo.isManager && (
-            <div className="bg-blue-600 rounded-[2.5rem] p-6 text-white shadow-xl shadow-blue-500/20">
-              <h3 className="text-xl font-bold mb-2">Team Approvals</h3>
-              <p className="text-sm opacity-80 mb-4">You have pending requests from your team.</p>
-              <button
-                onClick={() => router.push('/hod')}
-                className="bg-white text-blue-600 px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg"
-              >
-                Open HOD Portal
-              </button>
+            <div className="space-y-4">
+              <div className="flex justify-between items-end px-2">
+                <div>
+                  <h3 className="text-xl font-bold">Team Approvals</h3>
+                  <p className="text-sm text-slate-500 dark:text-zinc-400">Pending requests from your team</p>
+                </div>
+                <button
+                  onClick={() => fetchPendingApprovals(employeeInfo.id)}
+                  className="text-[10px] font-bold text-blue-600 uppercase tracking-widest hover:underline"
+                >
+                  Refresh
+                </button>
+              </div>
+
+              {approvalsError && (
+                <div className="bg-rose-50 dark:bg-rose-500/10 p-4 rounded-2xl border border-rose-100 dark:border-rose-500/20 text-rose-500 text-sm font-medium flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  {approvalsError}
+                </div>
+              )}
+
+              {selectedApprovalMap && (
+                <div className="bg-white dark:bg-zinc-900 rounded-3xl p-4 shadow-xl border border-blue-100 dark:border-blue-900/30 animate-in fade-in zoom-in duration-300">
+                  <div className="flex justify-between items-center mb-4 px-2">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-blue-500" />
+                      <span className="text-sm font-bold">{selectedApprovalMap.name}'s Location</span>
+                    </div>
+                    <button onClick={() => setSelectedApprovalMap(null)} className="text-[10px] font-bold text-rose-500 uppercase tracking-widest">Close Map</button>
+                  </div>
+                  <div className="h-64 w-full rounded-2xl overflow-hidden border border-slate-100 dark:border-zinc-800">
+                    <Map lat={selectedApprovalMap.lat} lng={selectedApprovalMap.lng} />
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {loadingApprovals ? (
+                  <div className="space-y-4">
+                    {[1, 2].map(i => (
+                      <div key={i} className="h-48 w-full bg-slate-100 dark:bg-zinc-900 animate-pulse rounded-3xl" />
+                    ))}
+                  </div>
+                ) : pendingActivities.length === 0 ? (
+                  <div className="text-center py-16 bg-white dark:bg-zinc-900 rounded-3xl border border-dashed border-slate-200 dark:border-zinc-800">
+                    <CheckCircle2 className="w-12 h-12 text-green-500/30 mx-auto mb-4" />
+                    <p className="text-slate-400 font-medium">All caught up!</p>
+                  </div>
+                ) : (
+                  pendingActivities.map(activity => (
+                    <div key={activity.id} className="bg-white dark:bg-zinc-900 p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-zinc-800 hover:shadow-md transition-all group">
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-zinc-800 flex items-center justify-center overflow-hidden border border-slate-100 dark:border-zinc-800 shadow-sm">
+                            {empImages[activity.name] ? (
+                              <img
+                                src={empImages[activity.name]}
+                                alt={activity.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <User className="w-6 h-6 text-slate-400" />
+                            )}
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-lg">{activity.employee_name || activity.name}</h4>
+                            <div className="flex items-center gap-1.5 text-slate-500 dark:text-zinc-400">
+                              <Clock className="w-3 h-3" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider">{activity.type} - {activity.time}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setSelectedApprovalMap({ lat: activity.lat, lng: activity.lng, name: activity.name })}
+                          className="p-3 bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 rounded-2xl hover:bg-blue-100 transition-colors shadow-sm"
+                        >
+                          <MapIcon className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      <div className="bg-slate-50 dark:bg-zinc-800/50 p-3 rounded-2xl mb-4 flex items-start gap-2">
+                        <MapPin className="w-3.5 h-3.5 text-blue-500 mt-0.5" />
+                        <p className="text-[11px] text-slate-600 dark:text-zinc-400 font-medium leading-relaxed line-clamp-2">
+                          {activity.address}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          onClick={() => handleApprovalAction(activity.id, 'Rejected')}
+                          className="flex items-center justify-center gap-2 py-3 bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-rose-100 transition-all active:scale-95"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          Reject
+                        </button>
+                        <button
+                          onClick={() => handleApprovalAction(activity.id, 'Approved')}
+                          className="flex items-center justify-center gap-2 py-3 bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-400 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-green-100 transition-all active:scale-95 border border-green-100 dark:border-green-500/20"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          Approve
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           )}
 
@@ -307,16 +468,26 @@ export default function Home() {
     }
 
     if (activeTab === 'history') {
+      const isManager = employeeInfo.isManager;
+      const historyItems = isManager ? teamCheckins : myCheckins;
+      const isLoading = isManager ? loadingTeamHistory : loadingHistory;
+      const emptyText = isManager ? "No team mobile check-in history." : "No mobile check-in history.";
       return (
         <div className="space-y-6 pb-24">
-          <h2 className="text-2xl font-bold px-2">Mobile History</h2>
+          <h2 className="text-2xl font-bold px-2">{isManager ? "Team Mobile History" : "Mobile History"}</h2>
           <div className="space-y-4">
-            {myCheckins.length === 0 ? (
+            {isLoading ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="h-28 w-full bg-slate-100 dark:bg-zinc-900 animate-pulse rounded-3xl" />
+                ))}
+              </div>
+            ) : historyItems.length === 0 ? (
               <div className="text-center py-20 bg-white dark:bg-zinc-900 rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
-                <p className="text-slate-400 font-medium">No mobile check-in history.</p>
+                <p className="text-slate-400 font-medium">{emptyText}</p>
               </div>
             ) : (
-              myCheckins.map((item: any) => (
+              historyItems.map((item: any) => (
                 <div key={item.name} className="bg-white dark:bg-zinc-900 p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-zinc-800 space-y-4">
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-3">
@@ -326,6 +497,11 @@ export default function Home() {
                       <div>
                         <h4 className="font-bold text-sm tracking-tight">{item.log_type === 'IN' ? 'Check In' : 'Check Out'}</h4>
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{new Date(item.checkin_time).toLocaleString()}</p>
+                        {isManager && (
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
+                            {item.employee_name || item.employee}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <span className={`text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider ${item.status === 'Approved' ? 'bg-green-50 text-green-600 dark:bg-green-500/10' :
