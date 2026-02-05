@@ -1,5 +1,5 @@
 const ERPNEXT_URL = 'https://erp.ihgind.com';
-const TOKEN = 'token 5a58f74d3a6048c:b76e8329ac883ff';
+const TOKEN = 'token e9d536fe3a27e08:af972b4f3a436ed';
 
 export interface MobileCheckinData {
     employee: string;
@@ -211,6 +211,28 @@ export const erpnext = {
             method: 'GET',
             headers: { 'Authorization': TOKEN },
         });
+
+        if (!response.ok) {
+            let errorMsg = 'Failed to fetch Employee data';
+            try {
+                const error = await response.json();
+                console.error("ERPNext Employee Fetch Error:", error);
+
+                if (error._server_messages) {
+                    const messages = JSON.parse(error._server_messages);
+                    errorMsg = messages.map((m: any) => JSON.parse(m).message).join(' | ');
+                } else if (error.exception) {
+                    errorMsg = `Server Exception: ${error.exception}`;
+                } else if (error._error_message) {
+                    errorMsg = error._error_message;
+                }
+            } catch (e) {
+                const text = await response.text();
+                errorMsg = `Server Error (${response.status}): ${text}`;
+            }
+            throw new Error(errorMsg);
+        }
+
         const data = await response.json();
         console.log("ERPNext Employee Data:", data);
         return data.data?.[0] || null;
