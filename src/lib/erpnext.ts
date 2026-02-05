@@ -39,15 +39,21 @@ export const erpnext = {
             let errorMsg = 'Failed to post check-in to ERPNext';
             try {
                 const error = await response.json();
-                errorMsg = error._server_messages || error.message || errorMsg;
-                if (typeof errorMsg === 'string' && errorMsg.startsWith('[')) {
-                    const parsed = JSON.parse(errorMsg);
-                    errorMsg = parsed[0]?.message || errorMsg;
+                console.error("ERPNext Error Response:", error);
+
+                if (error._server_messages) {
+                    const messages = JSON.parse(error._server_messages);
+                    // Join all messages into one string
+                    errorMsg = messages.map((m: any) => JSON.parse(m).message).join(' | ');
+                } else if (error.exception) {
+                    errorMsg = `Server Exception: ${error.exception}`;
+                } else if (error.message) {
+                    errorMsg = error.message;
                 }
             } catch (e) {
                 const text = await response.text();
                 console.error("ERPNext raw error:", text);
-                errorMsg = `Server Error (500): Check ERPNext logs.`;
+                errorMsg = `Server Error (${response.status}): ${text.substring(0, 100)}`;
             }
             throw new Error(errorMsg);
         }

@@ -487,7 +487,8 @@ export default function Home() {
       }
 
       // Online - post directly
-      await erpnext.postCheckin({
+      console.log('[App] Posting check-in online:', checkinData);
+      const result = await erpnext.postCheckin({
         employee: employeeInfo.id,
         log_type: type,
         checkin_time: formatLocalDatetime(checkinTime),
@@ -497,17 +498,22 @@ export default function Home() {
         status: "Pending",
         hod: employeeInfo.hod
       });
+      console.log('[App] Check-in posted successfully:', result);
 
       setStatus(type === "IN" ? "CHECKED_IN" : "IDLE");
       setLoadingLandmark(false);
       setShowMap(false);
       setLastAction({ type: type === "IN" ? "Check-in" : "Check-out", time: checkinTime });
-      fetchMyHistory(employeeInfo.id);
+
+      console.log('[App] Fetching updated history...');
+      await fetchMyHistory(employeeInfo.id);
+      console.log('[App] History refreshed');
     } catch (error: any) {
-      console.error("ERPNext Sync Error:", error);
+      console.error("[App] ERPNext Sync Error:", error);
       setLocationError(`Sync Error: ${error.message}`);
       setStatus(type === "IN" ? "IDLE" : "CHECKED_IN");
       setLoadingLandmark(false);
+      alert(`Failed to ${type === "IN" ? "check in" : "check out"}: ${error.message}`);
     }
   };
 
