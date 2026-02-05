@@ -559,7 +559,7 @@ export default function Home() {
                     <button onClick={() => setSelectedApprovalMap(null)} className="text-[10px] font-bold text-rose-500 uppercase tracking-widest">Close Map</button>
                   </div>
                   <div className="h-64 w-full rounded-2xl overflow-hidden border border-slate-100 dark:border-zinc-800">
-                    <Map lat={selectedApprovalMap.lat} lng={selectedApprovalMap.lng} />
+                    <Map lat={selectedApprovalMap.lat} lng={selectedApprovalMap.lng} isOnline={isOnline} />
                   </div>
                 </div>
               )}
@@ -877,7 +877,7 @@ export default function Home() {
             </div>
 
             <div className="h-64 w-full rounded-[3rem] overflow-hidden border border-slate-100 dark:border-zinc-800 mb-8 relative">
-              <Map lat={location?.lat || 25.2048} lng={location?.lng || 55.2708} />
+              <Map lat={location?.lat || 25.2048} lng={location?.lng || 55.2708} isOnline={isOnline} />
               {!location && (
                 <div className="absolute inset-0 bg-white/50 dark:bg-zinc-900/50 flex items-center justify-center backdrop-blur-sm">
                   <span className="font-bold text-xs uppercase tracking-widest text-blue-600 animate-pulse">Locating...</span>
