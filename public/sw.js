@@ -154,7 +154,7 @@ async function syncOfflineCheckins() {
                 const response = await fetch('https://erp.ihgind.com/api/resource/Mobile Checkin', {
                     method: 'POST',
                     headers: {
-                        'Authorization': 'token e9d536fe3a27e08:af972b4f3a436ed',
+                        'Authorization': 'token e9d536fe3a27e08:ceb907fddc6d661',
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
                     },

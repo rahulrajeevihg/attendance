@@ -1,5 +1,5 @@
 const ERPNEXT_URL = 'https://erp.ihgind.com';
-const TOKEN = 'token e9d536fe3a27e08:af972b4f3a436ed';
+const TOKEN = 'token e9d536fe3a27e08:ceb907fddc6d661';
 
 export interface MobileCheckinData {
     employee: string;
