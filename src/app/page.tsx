@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import dynamic from "next/dynamic";
 import {
   MapPin,
   Clock,
@@ -9,31 +8,35 @@ import {
   LogOut,
   CheckCircle2,
   AlertCircle,
+  Calendar,
   Map as MapIcon,
+  Briefcase,
   ChevronDown,
   ChevronUp,
   User,
-  History as HistoryIcon,
-  Calendar as CalendarIcon,
-  CheckCircle,
-  Home as HomeIcon,
+  MoonStar,
   XCircle
 } from "lucide-react";
 
-import { erpnext } from "@/lib/erpnext";
+import { AttendanceRecord, erpnext, OvertimeAllocationRecord } from "@/lib/erpnext";
 import { useRouter } from "next/navigation";
 
 import BottomNav from "@/components/BottomNav";
 import CalendarView from "@/components/CalendarView";
-
-const Map = dynamic(() => import("@/components/Map"), {
-  ssr: false,
-  loading: () => <div className="h-48 w-full bg-slate-100 dark:bg-zinc-800 animate-pulse rounded-3xl flex items-center justify-center text-slate-400 font-medium">Loading Map...</div>
-});
+import Map from "@/components/Map";
 
 export default function Home() {
+  type KpiPeriodKey = "thisMonth" | "previousMonth";
+  type MonthlyKpi = {
+    present: number;
+    absent: number;
+    onLeave: number;
+    otMinutes: number;
+  };
+
   const router = useRouter();
   const [employeeInfo, setEmployeeInfo] = useState<{ id: string; name: string; hod: string; isManager: boolean; image?: string } | null>(null);
+  const [bootstrapping, setBootstrapping] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, history, approvals, calendar
 
@@ -60,14 +63,30 @@ export default function Home() {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
   const [isOnline, setIsOnline] = useState(true);
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
+  const [selectedKpiPeriod, setSelectedKpiPeriod] = useState<KpiPeriodKey>("thisMonth");
+  const [monthlyKpis, setMonthlyKpis] = useState<Record<KpiPeriodKey, MonthlyKpi>>({
+    thisMonth: { present: 0, absent: 0, onLeave: 0, otMinutes: 0 },
+    previousMonth: { present: 0, absent: 0, onLeave: 0, otMinutes: 0 },
+  });
+  const [loadingKpis, setLoadingKpis] = useState(false);
+  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
   // Register service worker on mount
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').then(
-        (registration) => console.log('[App] Service Worker registered:', registration),
-        (error) => console.error('[App] Service Worker registration failed:', error)
-      );
+    if (!('serviceWorker' in navigator)) return;
+
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      registrations.forEach((registration) => {
+        registration.unregister();
+      });
+    }).catch((error) => console.error('[App] Service Worker cleanup failed:', error));
+
+    if ("caches" in window) {
+      caches.keys().then((cacheNames) => {
+        cacheNames.forEach((cacheName) => {
+          caches.delete(cacheName);
+        });
+      }).catch((error) => console.error('[App] Cache cleanup failed:', error));
     }
   }, []);
 
@@ -200,27 +219,134 @@ export default function Home() {
     const image = localStorage.getItem("employee_image");
 
     if (!email || !id) {
+      setBootstrapping(false);
       router.push("/login");
     } else {
+      const baseInfo = {
+        id,
+        name: name || "Employee",
+        hod: hod || "",
+        isManager: false,
+        image: image || ""
+      };
+
+      setEmployeeInfo(baseInfo);
+      setBootstrapping(false);
+
       erpnext.isManager(id).then(isMgr => {
-        const info = {
-          id,
-          name: name || "Employee",
-          hod: hod || "",
-          isManager: isMgr,
-          image: image || ""
-        };
+        const info = { ...baseInfo, isManager: isMgr };
         setEmployeeInfo(info);
         fetchEverything(id, isMgr);
+      }).catch((error) => {
+        console.error("Failed to resolve manager status:", error);
+        fetchMyHistory(id);
+        fetchMonthlyKpis(id);
       });
     }
   }, [router]);
 
   const fetchEverything = async (id: string, isManager: boolean) => {
     await fetchMyHistory(id);
+    await fetchMonthlyKpis(id);
     if (isManager) {
       await fetchTeamHistory(id);
       await fetchPendingApprovals(id);
+    }
+  };
+
+  const getMonthRange = (monthOffset: number) => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + monthOffset + 1, 0);
+
+    const toDateString = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+
+    return {
+      start: toDateString(start),
+      end: toDateString(end),
+      label: monthOffset === 0 ? "This Month" : "Previous Month",
+    };
+  };
+
+  const sumOvertimeMinutes = (rows: OvertimeAllocationRecord[]) => {
+    const candidateFields = [
+      "overtime_hours",
+      "ot_hours",
+      "allocated_hours",
+      "total_hours",
+      "hours",
+      "actual_hours",
+      "approved_hours",
+      "total_overtime_hours",
+      "overtime_mins",
+      "ot_minutes",
+      "minutes",
+    ];
+
+    return rows.reduce((total, row) => {
+      for (const field of candidateFields) {
+        const raw = row[field];
+        if (typeof raw === "number" && Number.isFinite(raw)) {
+          return total + (field.includes("minute") || field.includes("mins") ? raw : raw * 60);
+        }
+        if (typeof raw === "string" && raw.trim() !== "" && !Number.isNaN(Number(raw))) {
+          const value = Number(raw);
+          return total + (field.includes("minute") || field.includes("mins") ? value : value * 60);
+        }
+      }
+      return total;
+    }, 0);
+  };
+
+  const buildMonthlyKpi = (attendance: AttendanceRecord[], overtime: OvertimeAllocationRecord[]): MonthlyKpi => {
+    return attendance.reduce<MonthlyKpi>((summary, record) => {
+      const normalizedStatus = (record.status || "").toLowerCase();
+
+      if (normalizedStatus === "present") summary.present += 1;
+      else if (normalizedStatus === "absent") summary.absent += 1;
+      else if (normalizedStatus.includes("leave")) summary.onLeave += 1;
+
+      return summary;
+    }, {
+      present: 0,
+      absent: 0,
+      onLeave: 0,
+      otMinutes: sumOvertimeMinutes(overtime),
+    });
+  };
+
+  const fetchMonthlyKpis = async (employeeId: string) => {
+    setLoadingKpis(true);
+
+    try {
+      const thisMonth = getMonthRange(0);
+      const previousMonth = getMonthRange(-1);
+
+      const [
+        thisMonthAttendance,
+        thisMonthOvertime,
+        previousMonthAttendance,
+        previousMonthOvertime,
+      ] = await Promise.all([
+        erpnext.getAttendanceSummary(employeeId, thisMonth.start, thisMonth.end),
+        erpnext.getOvertimeAllocations(employeeId, thisMonth.start, thisMonth.end),
+        erpnext.getAttendanceSummary(employeeId, previousMonth.start, previousMonth.end),
+        erpnext.getOvertimeAllocations(employeeId, previousMonth.start, previousMonth.end),
+      ]);
+
+      setMonthlyKpis({
+        thisMonth: buildMonthlyKpi(thisMonthAttendance, thisMonthOvertime),
+        previousMonth: buildMonthlyKpi(previousMonthAttendance, previousMonthOvertime),
+      });
+    } catch (error) {
+      console.error("Failed to fetch monthly KPIs:", error);
+    } finally {
+      setLoadingKpis(false);
     }
   };
 
@@ -364,6 +490,12 @@ export default function Home() {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   };
 
+  const formatMinutesAsHours = (minutes: number) => {
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = Math.round(minutes % 60);
+    return `${String(hours).padStart(2, "0")}h ${String(remainingMinutes).padStart(2, "0")}m`;
+  };
+
   const dayLogs = myCheckins.filter((log: any) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -427,9 +559,12 @@ export default function Home() {
 
   const fetchLandmark = async (lat: number, lng: number) => {
     try {
-      const MAPBOX_TOKEN = 'pk.eyJ1IjoicmFodWxyYWplZXYzMTIiLCJhIjoiY21rODdtMjBwMTdqZTNjcjVlZDQwZnBlaSJ9.3uKDZg_IkLtHrKoELv7w0Q';
+      if (!mapboxToken) {
+        return "Mapbox token not configured";
+      }
+
       const response = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${MAPBOX_TOKEN}&types=poi,address,neighborhood&limit=1`
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${mapboxToken}&types=poi,address,neighborhood&limit=1`
       );
       const data = await response.json();
       return data.features?.[0]?.place_name || "Unknown Location";
@@ -732,6 +867,40 @@ export default function Home() {
     }
 
     // Default: Dashboard
+    const thisMonthLabel = getMonthRange(0).label;
+    const previousMonthLabel = getMonthRange(-1).label;
+    const kpi = monthlyKpis[selectedKpiPeriod];
+    const kpiCards = [
+      {
+        title: "Total Present",
+        value: kpi.present,
+        accent: "text-emerald-600",
+        bg: "bg-emerald-50 dark:bg-emerald-500/10",
+        icon: <CheckCircle2 className="w-5 h-5" />,
+      },
+      {
+        title: "Total Absent",
+        value: kpi.absent,
+        accent: "text-rose-600",
+        bg: "bg-rose-50 dark:bg-rose-500/10",
+        icon: <XCircle className="w-5 h-5" />,
+      },
+      {
+        title: "Total On Leave",
+        value: kpi.onLeave,
+        accent: "text-amber-600",
+        bg: "bg-amber-50 dark:bg-amber-500/10",
+        icon: <MoonStar className="w-5 h-5" />,
+      },
+      {
+        title: "Total OT Time",
+        value: formatMinutesAsHours(kpi.otMinutes),
+        accent: "text-blue-600",
+        bg: "bg-blue-50 dark:bg-blue-500/10",
+        icon: <Briefcase className="w-5 h-5" />,
+      },
+    ];
+
     return (
       <div className="w-full space-y-10 pb-24">
         <div className="flex flex-col items-center">
@@ -751,6 +920,57 @@ export default function Home() {
               </span>
             </div>
           </div>
+        </div>
+
+        <div className="bg-white dark:bg-zinc-900 p-6 rounded-[3rem] shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-zinc-800 space-y-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-slate-500 dark:text-zinc-400 text-[10px] font-black uppercase tracking-[0.3em]">Monthly KPIs</p>
+              <h3 className="text-xl font-black tracking-tight">Attendance Summary</h3>
+            </div>
+            <Calendar className="w-6 h-6 text-slate-300 dark:text-zinc-700" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 rounded-[2rem] bg-slate-100/80 dark:bg-zinc-800/70 p-2">
+            <button
+              onClick={() => setSelectedKpiPeriod("thisMonth")}
+              className={`rounded-[1.4rem] px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${selectedKpiPeriod === "thisMonth"
+                ? "bg-white dark:bg-zinc-900 text-slate-900 dark:text-white shadow-sm"
+                : "text-slate-500 dark:text-zinc-400"
+                }`}
+            >
+              {thisMonthLabel}
+            </button>
+            <button
+              onClick={() => setSelectedKpiPeriod("previousMonth")}
+              className={`rounded-[1.4rem] px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${selectedKpiPeriod === "previousMonth"
+                ? "bg-white dark:bg-zinc-900 text-slate-900 dark:text-white shadow-sm"
+                : "text-slate-500 dark:text-zinc-400"
+                }`}
+            >
+              {previousMonthLabel}
+            </button>
+          </div>
+
+          {loadingKpis ? (
+            <div className="grid grid-cols-2 gap-4">
+              {[1, 2, 3, 4].map((item) => (
+                <div key={item} className="h-28 rounded-[2rem] bg-slate-100 dark:bg-zinc-800 animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              {kpiCards.map((card) => (
+                <div key={card.title} className={`rounded-[2rem] p-4 border border-slate-100 dark:border-zinc-800 ${card.bg}`}>
+                  <div className={`mb-4 inline-flex rounded-2xl p-3 ${card.accent} bg-white/70 dark:bg-zinc-900/60`}>
+                    {card.icon}
+                  </div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">{card.title}</p>
+                  <p className={`mt-2 text-2xl font-black tracking-tight ${card.accent}`}>{card.value}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="bg-white dark:bg-zinc-900 p-6 rounded-[3rem] shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-zinc-800">
@@ -810,7 +1030,7 @@ export default function Home() {
     );
   };
 
-  if (!employeeInfo) return (
+  if (bootstrapping || !employeeInfo) return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex flex-col items-center justify-center p-8">
       <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
     </div>
@@ -841,7 +1061,7 @@ export default function Home() {
             </div>
           )}
         </div>
-        <button onClick={() => { localStorage.clear(); router.push('/login'); }} className="relative group">
+        <button onClick={async () => { await erpnext.logout(); localStorage.clear(); router.push('/login'); }} className="relative group">
           <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white dark:border-zinc-800 shadow-lg group-hover:scale-105 transition-transform duration-300">
             {employeeInfo.image ? (
               <img

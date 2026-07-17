@@ -18,11 +18,7 @@ export default function LoginPage() {
         setError(null);
 
         try {
-            // 1. Authenticate with ERPNext
-            await erpnext.login(email, password);
-
-            // 2. Fetch linked Employee record
-            const employee = await erpnext.getEmployee(email);
+            const { employee } = await erpnext.login(email, password);
 
             if (!employee) {
                 throw new Error("No Employee record linked to this user in ERPNext.");

@@ -1,5 +1,4 @@
-const ERPNEXT_URL = 'https://erp.ihgind.com';
-const TOKEN = 'token e9d536fe3a27e08:ceb907fddc6d661';
+const ERP_PROXY_URL = "/api/erp";
 
 export interface MobileCheckinData {
     employee: string;
@@ -11,6 +10,22 @@ export interface MobileCheckinData {
     status?: 'Pending' | 'Approved' | 'Rejected';
     hod?: string;
 }
+
+export interface AttendanceRecord {
+    status?: string;
+    attendance_date?: string;
+}
+
+export interface OvertimeAllocationRecord {
+    [key: string]: string | number | null | undefined;
+}
+
+const buildHeaders = (): HeadersInit => {
+    return {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+    };
+};
 
 export const erpnext = {
     async postCheckin(data: MobileCheckinData) {
@@ -25,13 +40,9 @@ export const erpnext = {
 
         console.log("POSTING to ERPNext:", formattedData);
 
-        const response = await fetch(`${ERPNEXT_URL}/api/resource/Mobile Checkin`, {
+        const response = await fetch(`${ERP_PROXY_URL}/resource/Mobile%20Checkin`, {
             method: 'POST',
-            headers: {
-                'Authorization': TOKEN,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-            },
+            headers: buildHeaders(),
             body: JSON.stringify(formattedData),
         });
 
@@ -68,15 +79,11 @@ export const erpnext = {
             filters.push(["employee", "!=", hodId]); // Prevent self-approval
         }
 
-        const url = `${ERPNEXT_URL}/api/resource/Mobile Checkin?fields=["*"]&filters=${JSON.stringify(filters)}`;
+        const url = `${ERP_PROXY_URL}/resource/Mobile%20Checkin?fields=["*"]&filters=${JSON.stringify(filters)}`;
 
         const response = await fetch(url, {
             method: 'GET',
-            headers: {
-                'Authorization': TOKEN,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-            },
+            headers: buildHeaders(),
         });
 
         if (!response.ok) {
@@ -89,15 +96,11 @@ export const erpnext = {
 
     async getMyCheckins(employeeId: string) {
         const filters = [["employee", "=", employeeId]];
-        const url = `${ERPNEXT_URL}/api/resource/Mobile Checkin?fields=["*"]&filters=${JSON.stringify(filters)}&order_by=checkin_time desc`;
+        const url = `${ERP_PROXY_URL}/resource/Mobile%20Checkin?fields=["*"]&filters=${JSON.stringify(filters)}&order_by=checkin_time desc`;
 
         const response = await fetch(url, {
             method: 'GET',
-            headers: {
-                'Authorization': TOKEN,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-            },
+            headers: buildHeaders(),
         });
 
         if (!response.ok) {
@@ -113,15 +116,11 @@ export const erpnext = {
             ["hod", "=", hodId],
             ["employee", "!=", hodId]
         ];
-        const url = `${ERPNEXT_URL}/api/resource/Mobile Checkin?fields=["*"]&filters=${JSON.stringify(filters)}&order_by=checkin_time desc`;
+        const url = `${ERP_PROXY_URL}/resource/Mobile%20Checkin?fields=["*"]&filters=${JSON.stringify(filters)}&order_by=checkin_time desc`;
 
         const response = await fetch(url, {
             method: 'GET',
-            headers: {
-                'Authorization': TOKEN,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-            },
+            headers: buildHeaders(),
         });
 
         if (!response.ok) {
@@ -138,15 +137,11 @@ export const erpnext = {
             ["time", ">=", fromDate],
             ["time", "<=", toDate]
         ];
-        const url = `${ERPNEXT_URL}/api/resource/Employee Checkin?fields=["*"]&filters=${JSON.stringify(filters)}&order_by=time asc`;
+        const url = `${ERP_PROXY_URL}/resource/Employee%20Checkin?fields=["*"]&filters=${JSON.stringify(filters)}&order_by=time asc`;
 
         const response = await fetch(url, {
             method: 'GET',
-            headers: {
-                'Authorization': TOKEN,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-            },
+            headers: buildHeaders(),
         });
 
         if (!response.ok) {
@@ -157,14 +152,52 @@ export const erpnext = {
         return data.data;
     },
 
+    async getAttendanceSummary(employeeId: string, fromDate: string, toDate: string) {
+        const filters = [
+            ["employee", "=", employeeId],
+            ["attendance_date", ">=", fromDate],
+            ["attendance_date", "<=", toDate]
+        ];
+        const url = `${ERP_PROXY_URL}/resource/Attendance?fields=["status","attendance_date"]&filters=${JSON.stringify(filters)}&limit_page_length=500`;
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: buildHeaders(),
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch attendance summary');
+        }
+
+        const data = await response.json();
+        return (data.data || []) as AttendanceRecord[];
+    },
+
+    async getOvertimeAllocations(employeeId: string, fromDate: string, toDate: string) {
+        const filters = [
+            ["employee", "=", employeeId],
+            ["from_date", "<=", toDate],
+            ["to_date", ">=", fromDate]
+        ];
+        const url = `${ERP_PROXY_URL}/resource/Overtime%20Allocation?fields=["*"]&filters=${JSON.stringify(filters)}&limit_page_length=500`;
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: buildHeaders(),
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch overtime allocation');
+        }
+
+        const data = await response.json();
+        return (data.data || []) as OvertimeAllocationRecord[];
+    },
+
     async updateStatus(name: string, status: 'Approved' | 'Rejected', remarks?: string) {
-        const response = await fetch(`${ERPNEXT_URL}/api/resource/Mobile Checkin/${name}`, {
+        const response = await fetch(`${ERP_PROXY_URL}/resource/Mobile%20Checkin/${name}`, {
             method: 'PUT',
-            headers: {
-                'Authorization': TOKEN,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-            },
+            headers: buildHeaders(),
             body: JSON.stringify({
                 status,
                 approver_remarks: remarks,
@@ -179,13 +212,9 @@ export const erpnext = {
     },
 
     async deleteCheckin(name: string) {
-        const response = await fetch(`${ERPNEXT_URL}/api/resource/Mobile Checkin/${name}`, {
+        const response = await fetch(`${ERP_PROXY_URL}/resource/Mobile%20Checkin/${name}`, {
             method: 'DELETE',
-            headers: {
-                'Authorization': TOKEN,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-            },
+            headers: buildHeaders(),
         });
 
         if (!response.ok) {
@@ -196,20 +225,27 @@ export const erpnext = {
     },
 
     async login(usr: string, pwd: string) {
-        const response = await fetch(`${ERPNEXT_URL}/api/method/login`, {
+        const response = await fetch(`${ERP_PROXY_URL}/login`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: buildHeaders(),
             body: JSON.stringify({ usr, pwd }),
         });
         if (!response.ok) throw new Error('Invalid credentials');
         return await response.json();
     },
 
+    async logout() {
+        await fetch(`${ERP_PROXY_URL}/logout`, {
+            method: 'POST',
+            headers: buildHeaders(),
+        });
+    },
+
     async getEmployee(email: string) {
-        const url = `${ERPNEXT_URL}/api/resource/Employee?fields=["name","employee_name","reports_to","image"]&filters=[["user_id", "=", "${email}"]]`;
+        const url = `${ERP_PROXY_URL}/resource/Employee?fields=["name","employee_name","reports_to","image"]&filters=[["user_id", "=", "${email}"]]`;
         const response = await fetch(url, {
             method: 'GET',
-            headers: { 'Authorization': TOKEN },
+            headers: buildHeaders(),
         });
 
         if (!response.ok) {
@@ -241,24 +277,24 @@ export const erpnext = {
     async getEmployeeImages(employeeIds: string[]) {
         if (employeeIds.length === 0) return {};
         const filters = JSON.stringify([["name", "in", employeeIds]]);
-        const url = `${ERPNEXT_URL}/api/resource/Employee?fields=["name","image"]&filters=${filters}`;
+        const url = `${ERP_PROXY_URL}/resource/Employee?fields=["name","image"]&filters=${filters}`;
         const response = await fetch(url, {
             method: 'GET',
-            headers: { 'Authorization': TOKEN },
+            headers: buildHeaders(),
         });
         const data = await response.json();
         const imageMap: Record<string, string> = {};
         data.data?.forEach((e: any) => {
-            if (e.image) imageMap[e.name] = `${ERPNEXT_URL}${e.image}`;
+            if (e.image) imageMap[e.name] = `https://erp.ihgind.com${e.image}`;
         });
         return imageMap;
     },
 
     async isManager(employeeId: string) {
-        const url = `${ERPNEXT_URL}/api/resource/Employee?filters=[["reports_to", "=", "${employeeId}"]]&limit=1`;
+        const url = `${ERP_PROXY_URL}/resource/Employee?filters=[["reports_to", "=", "${employeeId}"]]&limit=1`;
         const response = await fetch(url, {
             method: 'GET',
-            headers: { 'Authorization': TOKEN },
+            headers: buildHeaders(),
         });
         const data = await response.json();
         return data.data && data.data.length > 0;
