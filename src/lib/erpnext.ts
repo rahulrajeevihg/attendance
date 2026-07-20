@@ -12,8 +12,11 @@ export interface MobileCheckinData {
 }
 
 export interface AttendanceRecord {
+    name?: string;
     status?: string;
     attendance_date?: string;
+    employee?: string;
+    docstatus?: number;
 }
 
 export interface OvertimeAllocationRecord {
@@ -25,6 +28,37 @@ const buildHeaders = (): HeadersInit => {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
     };
+};
+
+const parseErrorMessage = async (response: Response, fallbackMessage: string) => {
+    try {
+        const error = await response.json();
+
+        if (error?._server_messages) {
+            const messages = JSON.parse(error._server_messages);
+            return messages.map((m: any) => JSON.parse(m).message).join(' | ');
+        }
+
+        if (error?.message) return error.message;
+        if (error?._error_message) return error._error_message;
+        if (error?.exception) return String(error.exception);
+
+        return `${fallbackMessage} (${response.status})`;
+    } catch {
+        const text = await response.text();
+        return text ? `${fallbackMessage} (${response.status}): ${text.slice(0, 200)}` : `${fallbackMessage} (${response.status})`;
+    }
+};
+
+const erpFetch = async (url: string, options: RequestInit = {}) => {
+    return fetch(url, {
+        credentials: 'include',
+        ...options,
+        headers: {
+            ...buildHeaders(),
+            ...(options.headers || {}),
+        },
+    });
 };
 
 export const erpnext = {
@@ -40,32 +74,13 @@ export const erpnext = {
 
         console.log("POSTING to ERPNext:", formattedData);
 
-        const response = await fetch(`${ERP_PROXY_URL}/resource/Mobile%20Checkin`, {
+        const response = await erpFetch(`${ERP_PROXY_URL}/resource/Mobile%20Checkin`, {
             method: 'POST',
-            headers: buildHeaders(),
             body: JSON.stringify(formattedData),
         });
 
         if (!response.ok) {
-            let errorMsg = 'Failed to post check-in to ERPNext';
-            try {
-                const error = await response.json();
-                console.error("ERPNext Error Response:", error);
-
-                if (error._server_messages) {
-                    const messages = JSON.parse(error._server_messages);
-                    // Join all messages into one string
-                    errorMsg = messages.map((m: any) => JSON.parse(m).message).join(' | ');
-                } else if (error.exception) {
-                    errorMsg = `Server Exception: ${error.exception}`;
-                } else if (error.message) {
-                    errorMsg = error.message;
-                }
-            } catch (e) {
-                const text = await response.text();
-                console.error("ERPNext raw error:", text);
-                errorMsg = `Server Error (${response.status}): ${text.substring(0, 100)}`;
-            }
+            const errorMsg = await parseErrorMessage(response, 'Failed to post check-in to ERPNext');
             throw new Error(errorMsg);
         }
 
@@ -81,13 +96,12 @@ export const erpnext = {
 
         const url = `${ERP_PROXY_URL}/resource/Mobile%20Checkin?fields=["*"]&filters=${JSON.stringify(filters)}`;
 
-        const response = await fetch(url, {
+        const response = await erpFetch(url, {
             method: 'GET',
-            headers: buildHeaders(),
         });
 
         if (!response.ok) {
-            throw new Error('Failed to fetch pending check-ins');
+            throw new Error(await parseErrorMessage(response, 'Failed to fetch pending check-ins'));
         }
 
         const data = await response.json();
@@ -98,13 +112,12 @@ export const erpnext = {
         const filters = [["employee", "=", employeeId]];
         const url = `${ERP_PROXY_URL}/resource/Mobile%20Checkin?fields=["*"]&filters=${JSON.stringify(filters)}&order_by=checkin_time desc`;
 
-        const response = await fetch(url, {
+        const response = await erpFetch(url, {
             method: 'GET',
-            headers: buildHeaders(),
         });
 
         if (!response.ok) {
-            throw new Error('Failed to fetch your check-ins');
+            throw new Error(await parseErrorMessage(response, 'Failed to fetch your check-ins'));
         }
 
         const data = await response.json();
@@ -118,13 +131,12 @@ export const erpnext = {
         ];
         const url = `${ERP_PROXY_URL}/resource/Mobile%20Checkin?fields=["*"]&filters=${JSON.stringify(filters)}&order_by=checkin_time desc`;
 
-        const response = await fetch(url, {
+        const response = await erpFetch(url, {
             method: 'GET',
-            headers: buildHeaders(),
         });
 
         if (!response.ok) {
-            throw new Error('Failed to fetch team check-ins');
+            throw new Error(await parseErrorMessage(response, 'Failed to fetch team check-ins'));
         }
 
         const data = await response.json();
@@ -139,13 +151,12 @@ export const erpnext = {
         ];
         const url = `${ERP_PROXY_URL}/resource/Employee%20Checkin?fields=["*"]&filters=${JSON.stringify(filters)}&order_by=time asc`;
 
-        const response = await fetch(url, {
+        const response = await erpFetch(url, {
             method: 'GET',
-            headers: buildHeaders(),
         });
 
         if (!response.ok) {
-            throw new Error('Failed to fetch official attendance');
+            throw new Error(await parseErrorMessage(response, 'Failed to fetch official attendance'));
         }
 
         const data = await response.json();
@@ -155,18 +166,17 @@ export const erpnext = {
     async getAttendanceSummary(employeeId: string, fromDate: string, toDate: string) {
         const filters = [
             ["employee", "=", employeeId],
-            ["attendance_date", ">=", fromDate],
-            ["attendance_date", "<=", toDate]
+            ["attendance_date", "between", [fromDate, toDate]],
+            ["docstatus", "=", 1]
         ];
-        const url = `${ERP_PROXY_URL}/resource/Attendance?fields=["status","attendance_date"]&filters=${JSON.stringify(filters)}&limit_page_length=500`;
+        const url = `${ERP_PROXY_URL}/resource/Attendance?fields=["name","employee","status","attendance_date","docstatus"]&filters=${JSON.stringify(filters)}&limit_page_length=500`;
 
-        const response = await fetch(url, {
+        const response = await erpFetch(url, {
             method: 'GET',
-            headers: buildHeaders(),
         });
 
         if (!response.ok) {
-            throw new Error('Failed to fetch attendance summary');
+            throw new Error(await parseErrorMessage(response, 'Failed to fetch attendance summary'));
         }
 
         const data = await response.json();
@@ -181,13 +191,12 @@ export const erpnext = {
         ];
         const url = `${ERP_PROXY_URL}/resource/Overtime%20Allocation?fields=["*"]&filters=${JSON.stringify(filters)}&limit_page_length=500`;
 
-        const response = await fetch(url, {
+        const response = await erpFetch(url, {
             method: 'GET',
-            headers: buildHeaders(),
         });
 
         if (!response.ok) {
-            throw new Error('Failed to fetch overtime allocation');
+            throw new Error(await parseErrorMessage(response, 'Failed to fetch overtime allocation'));
         }
 
         const data = await response.json();
@@ -195,9 +204,8 @@ export const erpnext = {
     },
 
     async updateStatus(name: string, status: 'Approved' | 'Rejected', remarks?: string) {
-        const response = await fetch(`${ERP_PROXY_URL}/resource/Mobile%20Checkin/${name}`, {
+        const response = await erpFetch(`${ERP_PROXY_URL}/resource/Mobile%20Checkin/${name}`, {
             method: 'PUT',
-            headers: buildHeaders(),
             body: JSON.stringify({
                 status,
                 approver_remarks: remarks,
@@ -205,68 +213,47 @@ export const erpnext = {
         });
 
         if (!response.ok) {
-            throw new Error(`Failed to ${status} check-in`);
+            throw new Error(await parseErrorMessage(response, `Failed to ${status} check-in`));
         }
 
         return await response.json();
     },
 
     async deleteCheckin(name: string) {
-        const response = await fetch(`${ERP_PROXY_URL}/resource/Mobile%20Checkin/${name}`, {
+        const response = await erpFetch(`${ERP_PROXY_URL}/resource/Mobile%20Checkin/${name}`, {
             method: 'DELETE',
-            headers: buildHeaders(),
         });
 
         if (!response.ok) {
-            throw new Error('Failed to delete check-in log');
+            throw new Error(await parseErrorMessage(response, 'Failed to delete check-in log'));
         }
 
         return await response.json();
     },
 
     async login(usr: string, pwd: string) {
-        const response = await fetch(`${ERP_PROXY_URL}/login`, {
+        const response = await erpFetch(`${ERP_PROXY_URL}/login`, {
             method: 'POST',
-            headers: buildHeaders(),
             body: JSON.stringify({ usr, pwd }),
         });
-        if (!response.ok) throw new Error('Invalid credentials');
+        if (!response.ok) throw new Error(await parseErrorMessage(response, 'Invalid credentials'));
         return await response.json();
     },
 
     async logout() {
-        await fetch(`${ERP_PROXY_URL}/logout`, {
+        await erpFetch(`${ERP_PROXY_URL}/logout`, {
             method: 'POST',
-            headers: buildHeaders(),
         });
     },
 
     async getEmployee(email: string) {
         const url = `${ERP_PROXY_URL}/resource/Employee?fields=["name","employee_name","reports_to","image"]&filters=[["user_id", "=", "${email}"]]`;
-        const response = await fetch(url, {
+        const response = await erpFetch(url, {
             method: 'GET',
-            headers: buildHeaders(),
         });
 
         if (!response.ok) {
-            let errorMsg = 'Failed to fetch Employee data';
-            try {
-                const error = await response.json();
-                console.error("ERPNext Employee Fetch Error:", error);
-
-                if (error._server_messages) {
-                    const messages = JSON.parse(error._server_messages);
-                    errorMsg = messages.map((m: any) => JSON.parse(m).message).join(' | ');
-                } else if (error.exception) {
-                    errorMsg = `Server Exception: ${error.exception}`;
-                } else if (error._error_message) {
-                    errorMsg = error._error_message;
-                }
-            } catch (e) {
-                const text = await response.text();
-                errorMsg = `Server Error (${response.status}): ${text}`;
-            }
-            throw new Error(errorMsg);
+            throw new Error(await parseErrorMessage(response, 'Failed to fetch Employee data'));
         }
 
         const data = await response.json();
@@ -278,9 +265,8 @@ export const erpnext = {
         if (employeeIds.length === 0) return {};
         const filters = JSON.stringify([["name", "in", employeeIds]]);
         const url = `${ERP_PROXY_URL}/resource/Employee?fields=["name","image"]&filters=${filters}`;
-        const response = await fetch(url, {
+        const response = await erpFetch(url, {
             method: 'GET',
-            headers: buildHeaders(),
         });
         const data = await response.json();
         const imageMap: Record<string, string> = {};
@@ -292,10 +278,12 @@ export const erpnext = {
 
     async isManager(employeeId: string) {
         const url = `${ERP_PROXY_URL}/resource/Employee?filters=[["reports_to", "=", "${employeeId}"]]&limit=1`;
-        const response = await fetch(url, {
+        const response = await erpFetch(url, {
             method: 'GET',
-            headers: buildHeaders(),
         });
+        if (!response.ok) {
+            throw new Error(await parseErrorMessage(response, 'Failed to check manager status'));
+        }
         const data = await response.json();
         return data.data && data.data.length > 0;
     }

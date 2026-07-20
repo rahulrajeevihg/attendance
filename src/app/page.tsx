@@ -305,7 +305,7 @@ export default function Home() {
 
   const buildMonthlyKpi = (attendance: AttendanceRecord[], overtime: OvertimeAllocationRecord[]): MonthlyKpi => {
     return attendance.reduce<MonthlyKpi>((summary, record) => {
-      const normalizedStatus = (record.status || "").toLowerCase();
+      const normalizedStatus = (record.status || "").trim().toLowerCase();
 
       if (normalizedStatus === "present") summary.present += 1;
       else if (normalizedStatus === "absent") summary.absent += 1;
@@ -320,6 +320,17 @@ export default function Home() {
     });
   };
 
+  const filterAttendanceByDateRange = (
+    attendance: AttendanceRecord[],
+    startDate: string,
+    endDate: string
+  ) => {
+    return attendance.filter((record) => {
+      const attendanceDate = record.attendance_date;
+      return Boolean(attendanceDate && attendanceDate >= startDate && attendanceDate <= endDate);
+    });
+  };
+
   const fetchMonthlyKpis = async (employeeId: string) => {
     setLoadingKpis(true);
 
@@ -327,17 +338,64 @@ export default function Home() {
       const thisMonth = getMonthRange(0);
       const previousMonth = getMonthRange(-1);
 
+      console.log("[KPI Debug] Starting monthly KPI fetch", {
+        employeeId,
+        thisMonth,
+        previousMonth,
+      });
+
       const [
-        thisMonthAttendance,
-        thisMonthOvertime,
-        previousMonthAttendance,
-        previousMonthOvertime,
-      ] = await Promise.all([
-        erpnext.getAttendanceSummary(employeeId, thisMonth.start, thisMonth.end),
+        attendanceResult,
+        thisMonthOvertimeResult,
+        previousMonthOvertimeResult,
+      ] = await Promise.allSettled([
+        erpnext.getAttendanceSummary(employeeId, previousMonth.start, thisMonth.end),
         erpnext.getOvertimeAllocations(employeeId, thisMonth.start, thisMonth.end),
-        erpnext.getAttendanceSummary(employeeId, previousMonth.start, previousMonth.end),
         erpnext.getOvertimeAllocations(employeeId, previousMonth.start, previousMonth.end),
       ]);
+
+      if (attendanceResult.status !== "fulfilled") {
+        throw attendanceResult.reason;
+      }
+
+      const attendance = attendanceResult.value;
+      console.log("[KPI Debug] Attendance rows returned from ERP", {
+        employeeId,
+        rangeStart: previousMonth.start,
+        rangeEnd: thisMonth.end,
+        totalRows: attendance.length,
+        rows: attendance,
+      });
+
+      const thisMonthOvertime = thisMonthOvertimeResult.status === "fulfilled" ? thisMonthOvertimeResult.value : [];
+      const previousMonthOvertime = previousMonthOvertimeResult.status === "fulfilled" ? previousMonthOvertimeResult.value : [];
+
+      if (thisMonthOvertimeResult.status !== "fulfilled") {
+        console.error("Failed to fetch this month overtime:", thisMonthOvertimeResult.reason);
+      }
+
+      if (previousMonthOvertimeResult.status !== "fulfilled") {
+        console.error("Failed to fetch previous month overtime:", previousMonthOvertimeResult.reason);
+      }
+
+      const thisMonthAttendance = filterAttendanceByDateRange(attendance, thisMonth.start, thisMonth.end);
+      const previousMonthAttendance = filterAttendanceByDateRange(attendance, previousMonth.start, previousMonth.end);
+
+      console.log("[KPI Debug] Attendance rows grouped by month", {
+        employeeId,
+        thisMonth: {
+          start: thisMonth.start,
+          end: thisMonth.end,
+          totalRows: thisMonthAttendance.length,
+          rows: thisMonthAttendance,
+        },
+        previousMonth: {
+          start: previousMonth.start,
+          end: previousMonth.end,
+          totalRows: previousMonthAttendance.length,
+          rows: previousMonthAttendance,
+        },
+      });
 
       setMonthlyKpis({
         thisMonth: buildMonthlyKpi(thisMonthAttendance, thisMonthOvertime),
