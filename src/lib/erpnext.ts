@@ -186,21 +186,32 @@ export const erpnext = {
     async getOvertimeAllocations(employeeId: string, fromDate: string, toDate: string) {
         const filters = [
             ["employee", "=", employeeId],
-            ["from_date", "<=", toDate],
-            ["to_date", ">=", fromDate]
+            ["ot_date", "between", [fromDate, toDate]],
+            ["status", "=", "Approved"]
         ];
-        const url = `${ERP_PROXY_URL}/resource/Overtime%20Allocation?fields=["*"]&filters=${JSON.stringify(filters)}&limit_page_length=500`;
+        const fields = `["name","employee","ot_date","from_time","to_time","ot_hours","status"]`;
+        const urls = [
+            `${ERP_PROXY_URL}/resource/Overtime%20Alloctation?fields=${fields}&filters=${JSON.stringify(filters)}&limit_page_length=500`,
+            `${ERP_PROXY_URL}/resource/Overtime%20Allocation?fields=${fields}&filters=${JSON.stringify(filters)}&limit_page_length=500`,
+        ];
 
-        const response = await erpFetch(url, {
-            method: 'GET',
-        });
+        let lastError: Error | null = null;
 
-        if (!response.ok) {
-            throw new Error(await parseErrorMessage(response, 'Failed to fetch overtime allocation'));
+        for (const url of urls) {
+            const response = await erpFetch(url, {
+                method: 'GET',
+            });
+
+            if (!response.ok) {
+                lastError = new Error(await parseErrorMessage(response, 'Failed to fetch overtime allocation'));
+                continue;
+            }
+
+            const data = await response.json();
+            return (data.data || []) as OvertimeAllocationRecord[];
         }
 
-        const data = await response.json();
-        return (data.data || []) as OvertimeAllocationRecord[];
+        throw lastError ?? new Error('Failed to fetch overtime allocation');
     },
 
     async updateStatus(name: string, status: 'Approved' | 'Rejected', remarks?: string) {
