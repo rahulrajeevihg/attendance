@@ -33,6 +33,11 @@ export default function Home() {
     onLeave: number;
     otMinutes: number;
   };
+  type OfficialCheckinRecord = {
+    name?: string;
+    log_type?: string;
+    time?: string;
+  };
 
   const router = useRouter();
   const [employeeInfo, setEmployeeInfo] = useState<{ id: string; name: string; hod: string; isManager: boolean; image?: string } | null>(null);
@@ -49,6 +54,7 @@ export default function Home() {
   const [loadingLandmark, setLoadingLandmark] = useState(false);
   const [myCheckins, setMyCheckins] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [todayOfficialCheckins, setTodayOfficialCheckins] = useState<OfficialCheckinRecord[]>([]);
   const [teamCheckins, setTeamCheckins] = useState<any[]>([]);
   const [loadingTeamHistory, setLoadingTeamHistory] = useState(false);
   const [totalWorkTime, setTotalWorkTime] = useState(0); // in seconds
@@ -411,11 +417,31 @@ export default function Home() {
   const fetchMyHistory = async (empId: string) => {
     setLoadingHistory(true);
     try {
-      const data = await erpnext.getMyCheckins(empId);
+      const today = new Date();
+      const formatLocalDateTime = (date: Date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        const hours = String(date.getHours()).padStart(2, "0");
+        const minutes = String(date.getMinutes()).padStart(2, "0");
+        const seconds = String(date.getSeconds()).padStart(2, "0");
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+      };
+
+      const startOfToday = new Date(today);
+      startOfToday.setHours(0, 0, 0, 0);
+      const endOfToday = new Date(today);
+      endOfToday.setHours(23, 59, 59, 999);
+
+      const [data, officialCheckins] = await Promise.all([
+        erpnext.getMyCheckins(empId),
+        erpnext.getOfficialCheckins(empId, formatLocalDateTime(startOfToday), formatLocalDateTime(endOfToday)),
+      ]);
+
       setMyCheckins(data);
+      setTodayOfficialCheckins(officialCheckins);
 
       // Calculate today's status and duration
-      const today = new Date();
       today.setHours(0, 0, 0, 0);
       const todaysLogs = data.filter((log: any) => new Date(log.checkin_time) >= today);
 
@@ -448,6 +474,7 @@ export default function Home() {
 
     } catch (error) {
       console.error("Failed to fetch history:", error);
+      setTodayOfficialCheckins([]);
     } finally {
       setLoadingHistory(false);
     }
@@ -559,6 +586,12 @@ export default function Home() {
     today.setHours(0, 0, 0, 0);
     return new Date(log.checkin_time) >= today;
   });
+
+  const officialInLog = todayOfficialCheckins.find((log) => log.log_type === "IN");
+  const officialOutLogs = todayOfficialCheckins.filter((log) => log.log_type === "OUT");
+  const officialOutLog = officialOutLogs.length > 0 ? officialOutLogs[officialOutLogs.length - 1] : null;
+  const formatOfficialTime = (value?: string) =>
+    value ? new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--";
 
   const getActiveDuration = () => {
     let seconds = totalWorkTime;
@@ -1043,6 +1076,27 @@ export default function Home() {
           </div>
 
           <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/80 dark:bg-emerald-950/20 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">Official In</p>
+                <p className="mt-2 text-xl font-black tracking-tight text-emerald-800 dark:text-emerald-100">
+                  {formatOfficialTime(officialInLog?.time)}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-rose-100 dark:border-rose-900/40 bg-rose-50/80 dark:bg-rose-950/20 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-700 dark:text-rose-300">Official Out</p>
+                <p className="mt-2 text-xl font-black tracking-tight text-rose-800 dark:text-rose-100">
+                  {formatOfficialTime(officialOutLog?.time)}
+                </p>
+              </div>
+            </div>
+
+            {todayOfficialCheckins.length === 0 && (
+              <p className="text-center py-2 text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+                No Employee Checkin records found for today
+              </p>
+            )}
+
             {dayLogs.length === 0 ? (
               <p className="text-center py-6 text-slate-400 text-xs font-bold uppercase tracking-widest">No logs yet today</p>
             ) : (
