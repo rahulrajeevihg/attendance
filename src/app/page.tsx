@@ -87,10 +87,11 @@ export default function Home() {
 
     for (const log of sortedLogs) {
       const logTime = new Date(log.time as string);
+      const normalizedLogType = (log.log_type || "").trim().toUpperCase();
 
-      if (log.log_type === "IN") {
+      if (normalizedLogType === "IN") {
         openInTime = logTime;
-      } else if (log.log_type === "OUT" && openInTime) {
+      } else if (normalizedLogType === "OUT" && openInTime) {
         totalSeconds += Math.max(0, (logTime.getTime() - openInTime.getTime()) / 1000);
         openInTime = null;
       }
@@ -626,11 +627,20 @@ export default function Home() {
   const officialOutLog = officialOutLogs.length > 0 ? officialOutLogs[officialOutLogs.length - 1] : null;
   const formatOfficialTime = (value?: string) =>
     value ? new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--";
+  const officialTodaySummary = calculateTodayWorkSummary(todayOfficialCheckins);
 
   const getActiveDuration = () => {
+    if (todayOfficialCheckins.length > 0) {
+      let seconds = officialTodaySummary.totalSeconds;
+      if (officialTodaySummary.activeStartTime) {
+        seconds += Math.max(0, (currentTime.getTime() - officialTodaySummary.activeStartTime.getTime()) / 1000);
+      }
+      return formatDuration(seconds);
+    }
+
     let seconds = totalWorkTime;
     if (activeStartTime) {
-      seconds += (currentTime.getTime() - activeStartTime.getTime()) / 1000;
+      seconds += Math.max(0, (currentTime.getTime() - activeStartTime.getTime()) / 1000);
     }
     return formatDuration(seconds);
   };
