@@ -77,6 +77,32 @@ export default function Home() {
   const [loadingKpis, setLoadingKpis] = useState(false);
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
+  const calculateTodayWorkSummary = (logs: OfficialCheckinRecord[]) => {
+    const sortedLogs = [...logs]
+      .filter((log) => log.time && log.log_type)
+      .sort((a, b) => new Date(a.time as string).getTime() - new Date(b.time as string).getTime());
+
+    let totalSeconds = 0;
+    let openInTime: Date | null = null;
+
+    for (const log of sortedLogs) {
+      const logTime = new Date(log.time as string);
+
+      if (log.log_type === "IN") {
+        openInTime = logTime;
+      } else if (log.log_type === "OUT" && openInTime) {
+        totalSeconds += Math.max(0, (logTime.getTime() - openInTime.getTime()) / 1000);
+        openInTime = null;
+      }
+    }
+
+    return {
+      totalSeconds,
+      activeStartTime: openInTime,
+      isCheckedIn: Boolean(openInTime),
+    };
+  };
+
   // Register service worker on mount
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
@@ -440,6 +466,14 @@ export default function Home() {
 
       setMyCheckins(data);
       setTodayOfficialCheckins(officialCheckins);
+
+      const officialTodaySummary = calculateTodayWorkSummary(officialCheckins);
+      if (officialCheckins.length > 0) {
+        setTotalWorkTime(officialTodaySummary.totalSeconds);
+        setActiveStartTime(officialTodaySummary.activeStartTime);
+        setStatus(officialTodaySummary.isCheckedIn ? "CHECKED_IN" : "IDLE");
+        return;
+      }
 
       // Calculate today's status and duration
       today.setHours(0, 0, 0, 0);
@@ -1095,6 +1129,39 @@ export default function Home() {
               <p className="text-center py-2 text-slate-400 text-[10px] font-bold uppercase tracking-widest">
                 No Employee Checkin records found for today
               </p>
+            )}
+
+            {todayOfficialCheckins.length > 0 && (
+              <div className="rounded-2xl border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
+                    Official Employee Checkin
+                  </p>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    {todayOfficialCheckins.length} logs
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {todayOfficialCheckins.map((log) => (
+                    <div
+                      key={log.name || `${log.log_type}-${log.time}`}
+                      className="flex items-center justify-between rounded-xl bg-white dark:bg-zinc-900 px-3 py-2 border border-slate-100 dark:border-zinc-800"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${log.log_type === "IN" ? "bg-green-100 text-green-600" : "bg-rose-100 text-rose-600"}`}>
+                          {log.log_type === "IN" ? <LogIn className="w-4 h-4" /> : <LogOut className="w-4 h-4" />}
+                        </div>
+                        <p className="text-sm font-bold tracking-tight">
+                          {log.log_type === "IN" ? "Check In" : "Check Out"}
+                        </p>
+                      </div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        {formatOfficialTime(log.time)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
 
             {dayLogs.length === 0 ? (
