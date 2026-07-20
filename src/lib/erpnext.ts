@@ -184,34 +184,39 @@ export const erpnext = {
     },
 
     async getOvertimeAllocations(employeeId: string, fromDate: string, toDate: string) {
-        const filters = [
-            ["employee", "=", employeeId],
-            ["ot_date", "between", [fromDate, toDate]],
-            ["status", "=", "Approved"]
-        ];
-        const fields = `["name","employee","ot_date","from_time","to_time","ot_hours","status"]`;
-        const urls = [
-            `${ERP_PROXY_URL}/resource/Overtime%20Alloctation?fields=${fields}&filters=${JSON.stringify(filters)}&limit_page_length=500`,
-            `${ERP_PROXY_URL}/resource/Overtime%20Allocation?fields=${fields}&filters=${JSON.stringify(filters)}&limit_page_length=500`,
-        ];
+        const filters = [["employee", "=", employeeId]];
+        const fields = `["*"]`;
+        const url = `${ERP_PROXY_URL}/resource/Overtime%20Alloctation?fields=${fields}&filters=${JSON.stringify(filters)}&limit_page_length=500`;
+        const response = await erpFetch(url, {
+            method: 'GET',
+        });
 
-        let lastError: Error | null = null;
-
-        for (const url of urls) {
-            const response = await erpFetch(url, {
-                method: 'GET',
-            });
-
-            if (!response.ok) {
-                lastError = new Error(await parseErrorMessage(response, 'Failed to fetch overtime allocation'));
-                continue;
-            }
-
-            const data = await response.json();
-            return (data.data || []) as OvertimeAllocationRecord[];
+        if (!response.ok) {
+            throw new Error(await parseErrorMessage(response, 'Failed to fetch overtime allocation'));
         }
 
-        throw lastError ?? new Error('Failed to fetch overtime allocation');
+        const data = await response.json();
+        const rows = (data.data || []) as OvertimeAllocationRecord[];
+        const filteredRows = rows.filter((row) => {
+            const otDate = String(row.ot_date || row.date || row.attendance_date || "");
+            const status = String(row.status || row.workflow_state || row.approval_status || "").trim().toLowerCase();
+            const docstatus = Number(row.docstatus ?? 0);
+            const isApproved = status === "" ? docstatus === 1 : status === "approved";
+            const isWithinRange = Boolean(otDate && otDate >= fromDate && otDate <= toDate);
+            return isApproved && isWithinRange;
+        });
+
+        console.log("[KPI Debug] Overtime rows returned from ERP", {
+            employeeId,
+            fromDate,
+            toDate,
+            totalRows: rows.length,
+            matchedRows: filteredRows.length,
+            rows,
+            filteredRows,
+        });
+
+        return filteredRows;
     },
 
     async updateStatus(name: string, status: 'Approved' | 'Rejected', remarks?: string) {
