@@ -14,7 +14,6 @@ import {
   User,
   MoonStar,
   XCircle,
-  Wallet,
   Printer
 } from "lucide-react";
 
@@ -894,6 +893,10 @@ export default function Home() {
   const renderContent = () => {
     if (!employeeInfo) return null;
 
+    const thisMonthLabel = getMonthRange(0).label;
+    const previousMonthLabel = getMonthRange(-1).label;
+    const activeSalarySlip = salarySlips[selectedSalaryPeriod];
+
     if (activeTab === 'calendar') {
       return <CalendarView employeeId={employeeInfo.id} />;
     }
@@ -1049,6 +1052,131 @@ export default function Home() {
       );
     }
 
+    if (activeTab === 'salary') {
+      return (
+        <div className="space-y-6 pb-24">
+          <div className="px-2">
+            <p className="text-slate-500 dark:text-zinc-400 text-[10px] font-black uppercase tracking-[0.3em]">Salary Slips</p>
+            <h2 className="text-2xl font-black tracking-tight">Salary Details</h2>
+          </div>
+
+          <div className="bg-white dark:bg-zinc-900 p-6 rounded-[3rem] shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-zinc-800 space-y-6">
+            <div className="grid grid-cols-2 gap-3 rounded-[2rem] bg-slate-100/80 dark:bg-zinc-800/70 p-2">
+              <button
+                onClick={() => setSelectedSalaryPeriod("thisMonth")}
+                className={`rounded-[1.4rem] px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${selectedSalaryPeriod === "thisMonth"
+                  ? "bg-white dark:bg-zinc-900 text-slate-900 dark:text-white shadow-sm"
+                  : "text-slate-500 dark:text-zinc-400"
+                  }`}
+              >
+                {thisMonthLabel}
+              </button>
+              <button
+                onClick={() => setSelectedSalaryPeriod("previousMonth")}
+                className={`rounded-[1.4rem] px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${selectedSalaryPeriod === "previousMonth"
+                  ? "bg-white dark:bg-zinc-900 text-slate-900 dark:text-white shadow-sm"
+                  : "text-slate-500 dark:text-zinc-400"
+                  }`}
+              >
+                {previousMonthLabel}
+              </button>
+            </div>
+
+            {salaryError && (
+              <div className="bg-rose-50 dark:bg-rose-500/10 p-4 rounded-2xl border border-rose-100 dark:border-rose-500/20 text-rose-500 text-sm font-medium flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                {salaryError}
+              </div>
+            )}
+
+            {loadingSalarySlips ? (
+              <div className="space-y-4">
+                <div className="h-28 rounded-[2rem] bg-slate-100 dark:bg-zinc-800 animate-pulse" />
+                <div className="h-72 rounded-[2rem] bg-slate-100 dark:bg-zinc-800 animate-pulse" />
+              </div>
+            ) : !activeSalarySlip ? (
+              <div className="text-center py-12 bg-slate-50 dark:bg-zinc-800/40 rounded-[2rem] border border-dashed border-slate-200 dark:border-zinc-700">
+                <p className="text-slate-500 dark:text-zinc-400 text-sm font-bold">
+                  No salary slip has been created for {selectedSalaryPeriod === "thisMonth" ? thisMonthLabel.toLowerCase() : previousMonthLabel.toLowerCase()}.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="rounded-[2rem] border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40 p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
+                        Salary Slip #{activeSalarySlip.name}
+                      </p>
+                      <h4 className="mt-2 text-lg font-black tracking-tight">{employeeInfo.name}</h4>
+                      <p className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-400">
+                        {activeSalarySlip.start_date} to {activeSalarySlip.end_date}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handlePrintSalarySlip(activeSalarySlip)}
+                      className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-blue-500/20 transition-all active:scale-95"
+                    >
+                      <Printer className="w-4 h-4" />
+                      Print Slip
+                    </button>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="rounded-2xl bg-white dark:bg-zinc-900 p-4 border border-slate-100 dark:border-zinc-800">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Gross Pay</p>
+                      <p className="mt-2 text-lg font-black tracking-tight text-slate-900 dark:text-white">
+                        {formatCurrency(activeSalarySlip.gross_pay, activeSalarySlip.currency)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-white dark:bg-zinc-900 p-4 border border-slate-100 dark:border-zinc-800">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Net Pay</p>
+                      <p className="mt-2 text-lg font-black tracking-tight text-emerald-600">
+                        {formatCurrency(activeSalarySlip.net_pay, activeSalarySlip.currency)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-white dark:bg-zinc-900 p-4 border border-slate-100 dark:border-zinc-800">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Rounded Total</p>
+                      <p className="mt-2 text-lg font-black tracking-tight text-blue-600">
+                        {formatCurrency(activeSalarySlip.rounded_total, activeSalarySlip.currency)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {activeSalarySlip.printHtml ? (
+                  <div className="rounded-[2rem] border border-slate-100 dark:border-zinc-800 bg-white overflow-hidden">
+                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 px-5 py-4">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
+                        Printable Content
+                      </p>
+                      <button
+                        onClick={() => handlePrintSalarySlip(activeSalarySlip)}
+                        className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline"
+                      >
+                        Print
+                      </button>
+                    </div>
+                    <iframe
+                      title={`Salary slip ${activeSalarySlip.name}`}
+                      srcDoc={activeSalarySlip.printHtml}
+                      className="h-[32rem] w-full bg-white"
+                    />
+                  </div>
+                ) : (
+                  <div className="rounded-[2rem] border border-dashed border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/40 px-5 py-8 text-center">
+                    <p className="text-sm font-bold text-slate-500 dark:text-zinc-400">
+                      Slip summary is available, but ERPNext print content could not be loaded.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     if (activeTab === 'history') {
       const isManager = employeeInfo.isManager;
       const historyItems = isManager ? teamCheckins : myCheckins;
@@ -1106,10 +1234,7 @@ export default function Home() {
     }
 
     // Default: Dashboard
-    const thisMonthLabel = getMonthRange(0).label;
-    const previousMonthLabel = getMonthRange(-1).label;
     const kpi = monthlyKpis[selectedKpiPeriod];
-    const activeSalarySlip = salarySlips[selectedSalaryPeriod];
     const kpiCards = [
       {
         title: "Total Present",
@@ -1209,128 +1334,6 @@ export default function Home() {
                   <p className={`mt-2 text-2xl font-black tracking-tight ${card.accent}`}>{card.value}</p>
                 </div>
               ))}
-            </div>
-          )}
-        </div>
-
-        <div className="bg-white dark:bg-zinc-900 p-6 rounded-[3rem] shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-zinc-800 space-y-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-slate-500 dark:text-zinc-400 text-[10px] font-black uppercase tracking-[0.3em]">Salary Slips</p>
-              <h3 className="text-xl font-black tracking-tight">Current & Previous Month</h3>
-            </div>
-            <Wallet className="w-6 h-6 text-slate-300 dark:text-zinc-700" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 rounded-[2rem] bg-slate-100/80 dark:bg-zinc-800/70 p-2">
-            <button
-              onClick={() => setSelectedSalaryPeriod("thisMonth")}
-              className={`rounded-[1.4rem] px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${selectedSalaryPeriod === "thisMonth"
-                ? "bg-white dark:bg-zinc-900 text-slate-900 dark:text-white shadow-sm"
-                : "text-slate-500 dark:text-zinc-400"
-                }`}
-            >
-              {thisMonthLabel}
-            </button>
-            <button
-              onClick={() => setSelectedSalaryPeriod("previousMonth")}
-              className={`rounded-[1.4rem] px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${selectedSalaryPeriod === "previousMonth"
-                ? "bg-white dark:bg-zinc-900 text-slate-900 dark:text-white shadow-sm"
-                : "text-slate-500 dark:text-zinc-400"
-                }`}
-            >
-              {previousMonthLabel}
-            </button>
-          </div>
-
-          {salaryError && (
-            <div className="bg-rose-50 dark:bg-rose-500/10 p-4 rounded-2xl border border-rose-100 dark:border-rose-500/20 text-rose-500 text-sm font-medium flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" />
-              {salaryError}
-            </div>
-          )}
-
-          {loadingSalarySlips ? (
-            <div className="space-y-4">
-              <div className="h-28 rounded-[2rem] bg-slate-100 dark:bg-zinc-800 animate-pulse" />
-              <div className="h-72 rounded-[2rem] bg-slate-100 dark:bg-zinc-800 animate-pulse" />
-            </div>
-          ) : !activeSalarySlip ? (
-            <div className="text-center py-12 bg-slate-50 dark:bg-zinc-800/40 rounded-[2rem] border border-dashed border-slate-200 dark:border-zinc-700">
-              <p className="text-slate-500 dark:text-zinc-400 text-sm font-bold">
-                No salary slip has been created for {selectedSalaryPeriod === "thisMonth" ? thisMonthLabel.toLowerCase() : previousMonthLabel.toLowerCase()}.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-5">
-              <div className="rounded-[2rem] border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40 p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
-                      Salary Slip #{activeSalarySlip.name}
-                    </p>
-                    <h4 className="mt-2 text-lg font-black tracking-tight">{employeeInfo.name}</h4>
-                    <p className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-400">
-                      {activeSalarySlip.start_date} to {activeSalarySlip.end_date}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => handlePrintSalarySlip(activeSalarySlip)}
-                    className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-blue-500/20 transition-all active:scale-95"
-                  >
-                    <Printer className="w-4 h-4" />
-                    Print Slip
-                  </button>
-                </div>
-
-                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div className="rounded-2xl bg-white dark:bg-zinc-900 p-4 border border-slate-100 dark:border-zinc-800">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Gross Pay</p>
-                    <p className="mt-2 text-lg font-black tracking-tight text-slate-900 dark:text-white">
-                      {formatCurrency(activeSalarySlip.gross_pay, activeSalarySlip.currency)}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl bg-white dark:bg-zinc-900 p-4 border border-slate-100 dark:border-zinc-800">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Net Pay</p>
-                    <p className="mt-2 text-lg font-black tracking-tight text-emerald-600">
-                      {formatCurrency(activeSalarySlip.net_pay, activeSalarySlip.currency)}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl bg-white dark:bg-zinc-900 p-4 border border-slate-100 dark:border-zinc-800">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Rounded Total</p>
-                    <p className="mt-2 text-lg font-black tracking-tight text-blue-600">
-                      {formatCurrency(activeSalarySlip.rounded_total, activeSalarySlip.currency)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {activeSalarySlip.printHtml ? (
-                <div className="rounded-[2rem] border border-slate-100 dark:border-zinc-800 bg-white overflow-hidden">
-                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 px-5 py-4">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
-                      Printable Content
-                    </p>
-                    <button
-                      onClick={() => handlePrintSalarySlip(activeSalarySlip)}
-                      className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline"
-                    >
-                      Print
-                    </button>
-                  </div>
-                  <iframe
-                    title={`Salary slip ${activeSalarySlip.name}`}
-                    srcDoc={activeSalarySlip.printHtml}
-                    className="h-[32rem] w-full bg-white"
-                  />
-                </div>
-              ) : (
-                <div className="rounded-[2rem] border border-dashed border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/40 px-5 py-8 text-center">
-                  <p className="text-sm font-bold text-slate-500 dark:text-zinc-400">
-                    Slip summary is available, but ERPNext print content could not be loaded.
-                  </p>
-                </div>
-              )}
             </div>
           )}
         </div>

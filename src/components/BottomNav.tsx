@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, History, CheckCircle, Calendar, Plus } from "lucide-react";
+import { Home, History, CheckCircle, Calendar, Plus, Wallet } from "lucide-react";
 
 interface BottomNavProps {
     activeTab: string;
@@ -15,11 +15,12 @@ export default function BottomNav({ activeTab, setActiveTab, onFabClick, isManag
         { id: 'history', label: 'History', icon: History },
         { id: 'fab', label: '', icon: Plus, isFab: true },
         { id: 'approvals', label: 'Approvals', icon: CheckCircle },
+        { id: 'salary', label: 'Salary', icon: Wallet },
         { id: 'calendar', label: 'Calendar', icon: Calendar },
     ];
 
     return (
-        <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 border-t border-slate-100 dark:border-zinc-800 p-2 pb-8 grid grid-cols-5 items-center z-50">
+        <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 border-t border-slate-100 dark:border-zinc-800 p-2 pb-8 grid grid-cols-6 items-center z-50">
             {tabs.map((tab) => {
                 const Icon = tab.icon;
 
