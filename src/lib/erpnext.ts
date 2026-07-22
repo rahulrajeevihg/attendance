@@ -41,6 +41,11 @@ export interface SalarySlipRecord {
 export interface SalarySlipComponent {
     salary_component?: string;
     amount?: number | string | null;
+    default_amount?: number | string | null;
+    additional_amount?: number | string | null;
+    base?: number | string | null;
+    rate?: number | string | null;
+    stat_amount?: number | string | null;
     parentfield?: string;
     idx?: number;
 }

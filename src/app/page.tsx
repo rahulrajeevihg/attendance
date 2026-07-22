@@ -704,6 +704,26 @@ export default function Home() {
     return normalized === "gratuity" || normalized === "leave salary";
   };
 
+  const getSalaryComponentRate = (item: SalarySlipComponent) => {
+    const candidates = [
+      item.rate,
+      item.default_amount,
+      item.base,
+      item.stat_amount,
+      item.additional_amount,
+      item.amount,
+    ];
+
+    for (const candidate of candidates) {
+      const numericValue = typeof candidate === "number" ? candidate : Number(candidate);
+      if (Number.isFinite(numericValue)) {
+        return numericValue;
+      }
+    }
+
+    return null;
+  };
+
   const buildSalaryRows = (slip: SalarySlipDetail | null) => {
     if (!slip) return [];
 
@@ -713,6 +733,7 @@ export default function Home() {
         .map((item) => ({
           type,
           component: item.salary_component || type,
+          rate: getSalaryComponentRate(item),
           amount: item.amount,
         }));
 
@@ -720,6 +741,12 @@ export default function Home() {
       ...mapRows(slip.earnings, "Earning"),
       ...mapRows(slip.deductions, "Deduction"),
     ];
+  };
+
+  const formatRateValue = (value: number | string | null | undefined) => {
+    const numericValue = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(numericValue)) return "";
+    return numericValue.toFixed(2);
   };
 
   const dayLogs = myCheckins.filter((log: any) => {
@@ -1057,6 +1084,12 @@ export default function Home() {
 
     if (activeTab === 'salary') {
       const salaryRows = buildSalaryRows(activeSalarySlip);
+      const totalEarnings = salaryRows
+        .filter((row) => row.type === "Earning")
+        .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+      const totalDeductions = salaryRows
+        .filter((row) => row.type === "Deduction")
+        .reduce((sum, row) => sum + Number(row.amount || 0), 0);
       return (
         <div className="space-y-6 pb-24">
           <div className="px-2">
@@ -1151,9 +1184,10 @@ export default function Home() {
                       <table className="min-w-full text-sm">
                         <thead className="bg-slate-50 dark:bg-zinc-800/70">
                           <tr>
-                            <th className="px-5 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Type</th>
                             <th className="px-5 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Component</th>
-                            <th className="px-5 py-3 text-right text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Amount</th>
+                            <th className="px-5 py-3 text-right text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Rate AED</th>
+                            <th className="px-5 py-3 text-right text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Earnings AED</th>
+                            <th className="px-5 py-3 text-right text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Deductions AED</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1162,24 +1196,38 @@ export default function Home() {
                               key={`${row.type}-${row.component}-${index}`}
                               className="border-t border-slate-100 dark:border-zinc-800"
                             >
-                              <td className="px-5 py-4">
-                                <span className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${row.type === "Earning"
-                                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
-                                  : "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300"
-                                  }`}>
-                                  {row.type}
-                                </span>
-                              </td>
                               <td className="px-5 py-4 font-bold text-slate-900 dark:text-white">{row.component}</td>
+                              <td className="px-5 py-4 text-right font-semibold text-slate-700 dark:text-zinc-300">
+                                {formatRateValue(row.rate)}
+                              </td>
+                              <td className="px-5 py-4 text-right font-black text-emerald-700 dark:text-emerald-300">
+                                {row.type === "Earning" ? formatCurrency(row.amount, activeSalarySlip.currency) : ""}
+                              </td>
                               <td className="px-5 py-4 text-right font-black text-slate-900 dark:text-white">
-                                {formatCurrency(row.amount, activeSalarySlip.currency)}
+                                {row.type === "Deduction" ? formatCurrency(row.amount, activeSalarySlip.currency) : ""}
                               </td>
                             </tr>
                           ))}
+                          <tr className="border-t-2 border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/60">
+                            <td className="px-5 py-4 font-black uppercase tracking-widest text-slate-900 dark:text-white">Total</td>
+                            <td className="px-5 py-4" />
+                            <td className="px-5 py-4 text-right font-black text-emerald-700 dark:text-emerald-300">
+                              {formatCurrency(totalEarnings, activeSalarySlip.currency)}
+                            </td>
+                            <td className="px-5 py-4 text-right font-black text-rose-700 dark:text-rose-300">
+                              {formatCurrency(totalDeductions, activeSalarySlip.currency)}
+                            </td>
+                          </tr>
                         </tbody>
                       </table>
                     </div>
                   )}
+                </div>
+
+                <div className="rounded-[2rem] border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/80 dark:bg-emerald-950/20 px-5 py-4">
+                  <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">
+                    Net Pay : {formatCurrency(activeSalarySlip.net_pay ?? activeSalarySlip.rounded_total, activeSalarySlip.currency)}
+                  </p>
                 </div>
               </div>
             )}
