@@ -11,14 +11,14 @@ import {
   Calendar,
   Map as MapIcon,
   Briefcase,
-  ChevronDown,
-  ChevronUp,
   User,
   MoonStar,
-  XCircle
+  XCircle,
+  Wallet,
+  Printer
 } from "lucide-react";
 
-import { AttendanceRecord, erpnext, OvertimeAllocationRecord } from "@/lib/erpnext";
+import { AttendanceRecord, erpnext, OvertimeAllocationRecord, SalarySlipRecord } from "@/lib/erpnext";
 import { useRouter } from "next/navigation";
 
 import BottomNav from "@/components/BottomNav";
@@ -27,11 +27,15 @@ import Map from "@/components/Map";
 
 export default function Home() {
   type KpiPeriodKey = "thisMonth" | "previousMonth";
+  type SalaryPeriodKey = "thisMonth" | "previousMonth";
   type MonthlyKpi = {
     present: number;
     absent: number;
     onLeave: number;
     otMinutes: number;
+  };
+  type SalarySlipView = SalarySlipRecord & {
+    printHtml?: string;
   };
   type OfficialCheckinRecord = {
     name?: string;
@@ -75,6 +79,13 @@ export default function Home() {
     previousMonth: { present: 0, absent: 0, onLeave: 0, otMinutes: 0 },
   });
   const [loadingKpis, setLoadingKpis] = useState(false);
+  const [selectedSalaryPeriod, setSelectedSalaryPeriod] = useState<SalaryPeriodKey>("thisMonth");
+  const [salarySlips, setSalarySlips] = useState<Record<SalaryPeriodKey, SalarySlipView | null>>({
+    thisMonth: null,
+    previousMonth: null,
+  });
+  const [loadingSalarySlips, setLoadingSalarySlips] = useState(false);
+  const [salaryError, setSalaryError] = useState<string | null>(null);
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
   const calculateTodayWorkSummary = (logs: OfficialCheckinRecord[]) => {
@@ -274,6 +285,7 @@ export default function Home() {
         console.error("Failed to resolve manager status:", error);
         fetchMyHistory(id);
         fetchMonthlyKpis(id);
+        fetchSalarySlips(id);
       });
     }
   }, [router]);
@@ -281,6 +293,7 @@ export default function Home() {
   const fetchEverything = async (id: string, isManager: boolean) => {
     await fetchMyHistory(id);
     await fetchMonthlyKpis(id);
+    await fetchSalarySlips(id);
     if (isManager) {
       await fetchTeamHistory(id);
       await fetchPendingApprovals(id);
@@ -438,6 +451,76 @@ export default function Home() {
       console.error("Failed to fetch monthly KPIs:", error);
     } finally {
       setLoadingKpis(false);
+    }
+  };
+
+  const getMonthKey = (value?: string) => {
+    if (!value) return "";
+    return value.slice(0, 7);
+  };
+
+  const formatCurrency = (value: number | string | null | undefined, currency = "AED") => {
+    const numericValue = typeof value === "number" ? value : Number(value || 0);
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 2,
+    }).format(Number.isFinite(numericValue) ? numericValue : 0);
+  };
+
+  const fetchSalarySlips = async (employeeId: string) => {
+    setLoadingSalarySlips(true);
+    setSalaryError(null);
+
+    try {
+      const thisMonth = getMonthRange(0);
+      const previousMonth = getMonthRange(-1);
+      const slips = await erpnext.getSalarySlips(employeeId, previousMonth.start, thisMonth.end);
+
+      const slipMap: Record<SalaryPeriodKey, SalarySlipView | null> = {
+        thisMonth: null,
+        previousMonth: null,
+      };
+
+      for (const slip of slips) {
+        const slipMonth = getMonthKey(slip.start_date || slip.end_date || slip.posting_date);
+        if (!slipMap.thisMonth && slipMonth === thisMonth.start.slice(0, 7)) {
+          slipMap.thisMonth = slip;
+          continue;
+        }
+
+        if (!slipMap.previousMonth && slipMonth === previousMonth.start.slice(0, 7)) {
+          slipMap.previousMonth = slip;
+        }
+      }
+
+      const printEntries = await Promise.allSettled(
+        (Object.entries(slipMap) as [SalaryPeriodKey, SalarySlipView | null][])
+          .filter(([, slip]) => Boolean(slip?.name))
+          .map(async ([period, slip]) => ({
+            period,
+            html: await erpnext.getSalarySlipPrintHtml((slip as SalarySlipView).name),
+          }))
+      );
+
+      for (const result of printEntries) {
+        if (result.status !== "fulfilled") {
+          console.error("Failed to fetch salary slip print HTML:", result.reason);
+          continue;
+        }
+
+        const currentSlip = slipMap[result.value.period];
+        if (currentSlip) {
+          currentSlip.printHtml = result.value.html;
+        }
+      }
+
+      setSalarySlips(slipMap);
+    } catch (error) {
+      console.error("Failed to fetch salary slips:", error);
+      setSalaryError("Failed to load salary slips from ERPNext.");
+    } finally {
+      setLoadingSalarySlips(false);
     }
   };
 
@@ -614,6 +697,27 @@ export default function Home() {
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = Math.round(minutes % 60);
     return `${String(hours).padStart(2, "0")}h ${String(remainingMinutes).padStart(2, "0")}m`;
+  };
+
+  const handlePrintSalarySlip = (slip: SalarySlipView | null) => {
+    if (!slip?.printHtml) {
+      alert("Printable salary slip content is not available yet.");
+      return;
+    }
+
+    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1024,height=768");
+    if (!printWindow) {
+      alert("Unable to open the print preview window.");
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(slip.printHtml);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 300);
   };
 
   const dayLogs = myCheckins.filter((log: any) => {
@@ -1005,6 +1109,7 @@ export default function Home() {
     const thisMonthLabel = getMonthRange(0).label;
     const previousMonthLabel = getMonthRange(-1).label;
     const kpi = monthlyKpis[selectedKpiPeriod];
+    const activeSalarySlip = salarySlips[selectedSalaryPeriod];
     const kpiCards = [
       {
         title: "Total Present",
@@ -1104,6 +1209,128 @@ export default function Home() {
                   <p className={`mt-2 text-2xl font-black tracking-tight ${card.accent}`}>{card.value}</p>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white dark:bg-zinc-900 p-6 rounded-[3rem] shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-zinc-800 space-y-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-slate-500 dark:text-zinc-400 text-[10px] font-black uppercase tracking-[0.3em]">Salary Slips</p>
+              <h3 className="text-xl font-black tracking-tight">Current & Previous Month</h3>
+            </div>
+            <Wallet className="w-6 h-6 text-slate-300 dark:text-zinc-700" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 rounded-[2rem] bg-slate-100/80 dark:bg-zinc-800/70 p-2">
+            <button
+              onClick={() => setSelectedSalaryPeriod("thisMonth")}
+              className={`rounded-[1.4rem] px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${selectedSalaryPeriod === "thisMonth"
+                ? "bg-white dark:bg-zinc-900 text-slate-900 dark:text-white shadow-sm"
+                : "text-slate-500 dark:text-zinc-400"
+                }`}
+            >
+              {thisMonthLabel}
+            </button>
+            <button
+              onClick={() => setSelectedSalaryPeriod("previousMonth")}
+              className={`rounded-[1.4rem] px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${selectedSalaryPeriod === "previousMonth"
+                ? "bg-white dark:bg-zinc-900 text-slate-900 dark:text-white shadow-sm"
+                : "text-slate-500 dark:text-zinc-400"
+                }`}
+            >
+              {previousMonthLabel}
+            </button>
+          </div>
+
+          {salaryError && (
+            <div className="bg-rose-50 dark:bg-rose-500/10 p-4 rounded-2xl border border-rose-100 dark:border-rose-500/20 text-rose-500 text-sm font-medium flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" />
+              {salaryError}
+            </div>
+          )}
+
+          {loadingSalarySlips ? (
+            <div className="space-y-4">
+              <div className="h-28 rounded-[2rem] bg-slate-100 dark:bg-zinc-800 animate-pulse" />
+              <div className="h-72 rounded-[2rem] bg-slate-100 dark:bg-zinc-800 animate-pulse" />
+            </div>
+          ) : !activeSalarySlip ? (
+            <div className="text-center py-12 bg-slate-50 dark:bg-zinc-800/40 rounded-[2rem] border border-dashed border-slate-200 dark:border-zinc-700">
+              <p className="text-slate-500 dark:text-zinc-400 text-sm font-bold">
+                No salary slip has been created for {selectedSalaryPeriod === "thisMonth" ? thisMonthLabel.toLowerCase() : previousMonthLabel.toLowerCase()}.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <div className="rounded-[2rem] border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40 p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
+                      Salary Slip #{activeSalarySlip.name}
+                    </p>
+                    <h4 className="mt-2 text-lg font-black tracking-tight">{employeeInfo.name}</h4>
+                    <p className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-400">
+                      {activeSalarySlip.start_date} to {activeSalarySlip.end_date}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handlePrintSalarySlip(activeSalarySlip)}
+                    className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-blue-500/20 transition-all active:scale-95"
+                  >
+                    <Printer className="w-4 h-4" />
+                    Print Slip
+                  </button>
+                </div>
+
+                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl bg-white dark:bg-zinc-900 p-4 border border-slate-100 dark:border-zinc-800">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Gross Pay</p>
+                    <p className="mt-2 text-lg font-black tracking-tight text-slate-900 dark:text-white">
+                      {formatCurrency(activeSalarySlip.gross_pay, activeSalarySlip.currency)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-white dark:bg-zinc-900 p-4 border border-slate-100 dark:border-zinc-800">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Net Pay</p>
+                    <p className="mt-2 text-lg font-black tracking-tight text-emerald-600">
+                      {formatCurrency(activeSalarySlip.net_pay, activeSalarySlip.currency)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-white dark:bg-zinc-900 p-4 border border-slate-100 dark:border-zinc-800">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Rounded Total</p>
+                    <p className="mt-2 text-lg font-black tracking-tight text-blue-600">
+                      {formatCurrency(activeSalarySlip.rounded_total, activeSalarySlip.currency)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {activeSalarySlip.printHtml ? (
+                <div className="rounded-[2rem] border border-slate-100 dark:border-zinc-800 bg-white overflow-hidden">
+                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 px-5 py-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
+                      Printable Content
+                    </p>
+                    <button
+                      onClick={() => handlePrintSalarySlip(activeSalarySlip)}
+                      className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline"
+                    >
+                      Print
+                    </button>
+                  </div>
+                  <iframe
+                    title={`Salary slip ${activeSalarySlip.name}`}
+                    srcDoc={activeSalarySlip.printHtml}
+                    className="h-[32rem] w-full bg-white"
+                  />
+                </div>
+              ) : (
+                <div className="rounded-[2rem] border border-dashed border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800/40 px-5 py-8 text-center">
+                  <p className="text-sm font-bold text-slate-500 dark:text-zinc-400">
+                    Slip summary is available, but ERPNext print content could not be loaded.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

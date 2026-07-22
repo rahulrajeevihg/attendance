@@ -23,6 +23,21 @@ export interface OvertimeAllocationRecord {
     [key: string]: string | number | null | undefined;
 }
 
+export interface SalarySlipRecord {
+    name: string;
+    employee?: string;
+    employee_name?: string;
+    start_date?: string;
+    end_date?: string;
+    posting_date?: string;
+    currency?: string;
+    gross_pay?: number | string | null;
+    net_pay?: number | string | null;
+    rounded_total?: number | string | null;
+    status?: string;
+    docstatus?: number;
+}
+
 const buildHeaders = (): HeadersInit => {
     return {
         'Content-Type': 'application/json',
@@ -217,6 +232,63 @@ export const erpnext = {
         });
 
         return filteredRows;
+    },
+
+    async getSalarySlips(employeeId: string, fromDate: string, toDate: string) {
+        const filters = [
+            ["employee", "=", employeeId],
+            ["start_date", ">=", fromDate],
+            ["end_date", "<=", toDate],
+            ["docstatus", "=", 1]
+        ];
+        const fields = JSON.stringify([
+            "name",
+            "employee",
+            "employee_name",
+            "start_date",
+            "end_date",
+            "posting_date",
+            "currency",
+            "gross_pay",
+            "net_pay",
+            "rounded_total",
+            "status",
+            "docstatus"
+        ]);
+        const url = `${ERP_PROXY_URL}/resource/Salary%20Slip?fields=${fields}&filters=${JSON.stringify(filters)}&order_by=start_date desc&limit_page_length=12`;
+        const response = await erpFetch(url, {
+            method: 'GET',
+        });
+
+        if (!response.ok) {
+            throw new Error(await parseErrorMessage(response, 'Failed to fetch salary slips'));
+        }
+
+        const data = await response.json();
+        return (data.data || []) as SalarySlipRecord[];
+    },
+
+    async getSalarySlipPrintHtml(name: string, printFormat = "Standard") {
+        const params = new URLSearchParams({
+            doctype: "Salary Slip",
+            name,
+            format: printFormat,
+            no_letterhead: "0",
+            trigger_print: "0",
+        });
+
+        const response = await erpFetch(`${ERP_PROXY_URL}/printview?${params.toString()}`, {
+            method: 'GET',
+            headers: {
+                Accept: 'text/html',
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error(await parseErrorMessage(response, 'Failed to fetch salary slip print view'));
+        }
+
+        return await response.text();
     },
 
     async updateStatus(name: string, status: 'Approved' | 'Rejected', remarks?: string) {
