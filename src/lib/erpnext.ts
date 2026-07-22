@@ -38,6 +38,18 @@ export interface SalarySlipRecord {
     docstatus?: number;
 }
 
+export interface SalarySlipComponent {
+    salary_component?: string;
+    amount?: number | string | null;
+    parentfield?: string;
+    idx?: number;
+}
+
+export interface SalarySlipDetail extends SalarySlipRecord {
+    earnings?: SalarySlipComponent[];
+    deductions?: SalarySlipComponent[];
+}
+
 const buildHeaders = (): HeadersInit => {
     return {
         'Content-Type': 'application/json',
@@ -266,6 +278,19 @@ export const erpnext = {
 
         const data = await response.json();
         return (data.data || []) as SalarySlipRecord[];
+    },
+
+    async getSalarySlipDetail(name: string) {
+        const response = await erpFetch(`${ERP_PROXY_URL}/resource/Salary%20Slip/${encodeURIComponent(name)}`, {
+            method: 'GET',
+        });
+
+        if (!response.ok) {
+            throw new Error(await parseErrorMessage(response, 'Failed to fetch salary slip details'));
+        }
+
+        const data = await response.json();
+        return (data.data || null) as SalarySlipDetail | null;
     },
 
     async getSalarySlipPrintHtml(name: string, printFormat = "Standard") {

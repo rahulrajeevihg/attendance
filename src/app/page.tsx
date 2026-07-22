@@ -16,7 +16,7 @@ import {
   XCircle
 } from "lucide-react";
 
-import { AttendanceRecord, erpnext, OvertimeAllocationRecord, SalarySlipRecord } from "@/lib/erpnext";
+import { AttendanceRecord, erpnext, OvertimeAllocationRecord, SalarySlipComponent, SalarySlipDetail } from "@/lib/erpnext";
 import { useRouter } from "next/navigation";
 
 import BottomNav from "@/components/BottomNav";
@@ -75,7 +75,7 @@ export default function Home() {
   });
   const [loadingKpis, setLoadingKpis] = useState(false);
   const [selectedSalaryPeriod, setSelectedSalaryPeriod] = useState<SalaryPeriodKey>("thisMonth");
-  const [salarySlips, setSalarySlips] = useState<Record<SalaryPeriodKey, SalarySlipRecord | null>>({
+  const [salarySlips, setSalarySlips] = useState<Record<SalaryPeriodKey, SalarySlipDetail | null>>({
     thisMonth: null,
     previousMonth: null,
   });
@@ -454,6 +454,16 @@ export default function Home() {
     return value.slice(0, 7);
   };
 
+  const formatCurrency = (value: number | string | null | undefined, currency = "AED") => {
+    const numericValue = typeof value === "number" ? value : Number(value || 0);
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Number.isFinite(numericValue) ? numericValue : 0);
+  };
+
   const fetchSalarySlips = async (employeeId: string) => {
     setLoadingSalarySlips(true);
     setSalaryError(null);
@@ -463,7 +473,7 @@ export default function Home() {
       const previousMonth = getMonthRange(-1);
       const slips = await erpnext.getSalarySlips(employeeId, previousMonth.start, thisMonth.end);
 
-      const slipMap: Record<SalaryPeriodKey, SalarySlipRecord | null> = {
+      const slipMap: Record<SalaryPeriodKey, SalarySlipDetail | null> = {
         thisMonth: null,
         previousMonth: null,
       };
@@ -477,6 +487,26 @@ export default function Home() {
 
         if (!slipMap.previousMonth && slipMonth === previousMonth.start.slice(0, 7)) {
           slipMap.previousMonth = slip;
+        }
+      }
+
+      const detailEntries = await Promise.allSettled(
+        (Object.entries(slipMap) as [SalaryPeriodKey, SalarySlipDetail | null][])
+          .filter(([, slip]) => Boolean(slip?.name))
+          .map(async ([period, slip]) => ({
+            period,
+            detail: await erpnext.getSalarySlipDetail((slip as SalarySlipDetail).name),
+          }))
+      );
+
+      for (const result of detailEntries) {
+        if (result.status !== "fulfilled") {
+          console.error("Failed to fetch salary slip details:", result.reason);
+          continue;
+        }
+
+        if (result.value.detail) {
+          slipMap[result.value.period] = result.value.detail;
         }
       }
 
@@ -662,6 +692,34 @@ export default function Home() {
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = Math.round(minutes % 60);
     return `${String(hours).padStart(2, "0")}h ${String(remainingMinutes).padStart(2, "0")}m`;
+  };
+
+  const formatSalaryPeriod = (startDate?: string, endDate?: string) => {
+    if (!startDate || !endDate) return "";
+    return `${startDate} to ${endDate}`;
+  };
+
+  const shouldHideSalaryComponent = (componentName?: string) => {
+    const normalized = (componentName || "").trim().toLowerCase();
+    return normalized === "gratuity" || normalized === "leave salary";
+  };
+
+  const buildSalaryRows = (slip: SalarySlipDetail | null) => {
+    if (!slip) return [];
+
+    const mapRows = (items: SalarySlipComponent[] | undefined, type: "Earning" | "Deduction") =>
+      (items || [])
+        .filter((item) => !shouldHideSalaryComponent(item.salary_component))
+        .map((item) => ({
+          type,
+          component: item.salary_component || type,
+          amount: item.amount,
+        }));
+
+    return [
+      ...mapRows(slip.earnings, "Earning"),
+      ...mapRows(slip.deductions, "Deduction"),
+    ];
   };
 
   const dayLogs = myCheckins.filter((log: any) => {
@@ -998,6 +1056,7 @@ export default function Home() {
     }
 
     if (activeTab === 'salary') {
+      const salaryRows = buildSalaryRows(activeSalarySlip);
       return (
         <div className="space-y-6 pb-24">
           <div className="px-2">
@@ -1046,10 +1105,82 @@ export default function Home() {
                 </p>
               </div>
             ) : (
-              <div className="rounded-[2rem] border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/80 dark:bg-emerald-950/20 px-5 py-8 text-center">
-                <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
-                  Salary slip is available for {selectedSalaryPeriod === "thisMonth" ? thisMonthLabel.toLowerCase() : previousMonthLabel.toLowerCase()}.
-                </p>
+              <div className="space-y-5">
+                <div className="rounded-[2rem] border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40 p-5">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
+                    Salary Slip #{activeSalarySlip.name}
+                  </p>
+                  <h3 className="mt-2 text-xl font-black tracking-tight text-slate-900 dark:text-white">
+                    {activeSalarySlip.employee_name || employeeInfo.name}
+                  </h3>
+                  <p className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-400">
+                    {formatSalaryPeriod(activeSalarySlip.start_date, activeSalarySlip.end_date)}
+                  </p>
+
+                  <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl bg-white dark:bg-zinc-900 p-4 border border-slate-100 dark:border-zinc-800">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Gross Pay</p>
+                      <p className="mt-2 text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+                        {formatCurrency(activeSalarySlip.gross_pay, activeSalarySlip.currency)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-white dark:bg-zinc-900 p-4 border border-slate-100 dark:border-zinc-800">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Net Pay</p>
+                      <p className="mt-2 text-2xl font-black tracking-tight text-emerald-600">
+                        {formatCurrency(activeSalarySlip.net_pay ?? activeSalarySlip.rounded_total, activeSalarySlip.currency)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="overflow-hidden rounded-[2rem] border border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+                  <div className="border-b border-slate-100 dark:border-zinc-800 px-5 py-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
+                      Earnings & Deductions
+                    </p>
+                  </div>
+
+                  {salaryRows.length === 0 ? (
+                    <div className="px-5 py-8 text-center">
+                      <p className="text-sm font-bold text-slate-500 dark:text-zinc-400">
+                        No earnings or deductions are available for this salary slip.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-slate-50 dark:bg-zinc-800/70">
+                          <tr>
+                            <th className="px-5 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Type</th>
+                            <th className="px-5 py-3 text-left text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Component</th>
+                            <th className="px-5 py-3 text-right text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {salaryRows.map((row, index) => (
+                            <tr
+                              key={`${row.type}-${row.component}-${index}`}
+                              className="border-t border-slate-100 dark:border-zinc-800"
+                            >
+                              <td className="px-5 py-4">
+                                <span className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${row.type === "Earning"
+                                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+                                  : "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300"
+                                  }`}>
+                                  {row.type}
+                                </span>
+                              </td>
+                              <td className="px-5 py-4 font-bold text-slate-900 dark:text-white">{row.component}</td>
+                              <td className="px-5 py-4 text-right font-black text-slate-900 dark:text-white">
+                                {formatCurrency(row.amount, activeSalarySlip.currency)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
