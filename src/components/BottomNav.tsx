@@ -13,27 +13,26 @@ export default function BottomNav({ activeTab, setActiveTab, onFabClick, isManag
     const tabs = [
         { id: 'dashboard', label: 'Home', icon: Home },
         { id: 'history', label: 'History', icon: History },
-        { id: 'fab', label: '', icon: Plus, isFab: true },
+        { id: 'spacer', label: '', icon: Plus, isSpacer: true },
         { id: 'approvals', label: 'Approvals', icon: CheckCircle },
         { id: 'salary', label: 'Salary', icon: Wallet },
         { id: 'calendar', label: 'Calendar', icon: Calendar },
     ];
 
     return (
-        <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 border-t border-slate-100 dark:border-zinc-800 p-2 pb-8 grid grid-cols-6 items-center z-50">
+        <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 border-t border-slate-100 dark:border-zinc-800 p-2 pb-8 grid grid-cols-6 items-center z-50 relative">
+            <button
+                onClick={onFabClick}
+                className="absolute left-1/2 -translate-x-1/2 -top-12 w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center shadow-xl shadow-blue-500/40 text-white transition-all active:scale-95 border-4 border-white dark:border-zinc-900 z-[60]"
+            >
+                <Plus className="w-10 h-10" />
+            </button>
             {tabs.map((tab) => {
                 const Icon = tab.icon;
 
-                if (tab.isFab) {
+                if (tab.isSpacer) {
                     return (
-                        <div key={tab.id} className="relative flex justify-center">
-                            <button
-                                onClick={onFabClick}
-                                className="absolute -top-12 w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center shadow-xl shadow-blue-500/40 text-white transition-all active:scale-95 border-4 border-white dark:border-zinc-900 z-[60]"
-                            >
-                                <Plus className="w-10 h-10" />
-                            </button>
-                        </div>
+                        <div key={tab.id} aria-hidden="true" className="h-10" />
                     );
                 }
 
