@@ -1355,57 +1355,6 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-zinc-900 p-6 rounded-[3rem] shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-zinc-800 space-y-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-slate-500 dark:text-zinc-400 text-[10px] font-black uppercase tracking-[0.3em]">Monthly KPIs</p>
-              <h3 className="text-xl font-black tracking-tight">Attendance Summary</h3>
-            </div>
-            <Calendar className="w-6 h-6 text-slate-300 dark:text-zinc-700" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 rounded-[2rem] bg-slate-100/80 dark:bg-zinc-800/70 p-2">
-            <button
-              onClick={() => setSelectedKpiPeriod("thisMonth")}
-              className={`rounded-[1.4rem] px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${selectedKpiPeriod === "thisMonth"
-                ? "bg-white dark:bg-zinc-900 text-slate-900 dark:text-white shadow-sm"
-                : "text-slate-500 dark:text-zinc-400"
-                }`}
-            >
-              {thisMonthLabel}
-            </button>
-            <button
-              onClick={() => setSelectedKpiPeriod("previousMonth")}
-              className={`rounded-[1.4rem] px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${selectedKpiPeriod === "previousMonth"
-                ? "bg-white dark:bg-zinc-900 text-slate-900 dark:text-white shadow-sm"
-                : "text-slate-500 dark:text-zinc-400"
-                }`}
-            >
-              {previousMonthLabel}
-            </button>
-          </div>
-
-          {loadingKpis ? (
-            <div className="grid grid-cols-2 gap-4">
-              {[1, 2, 3, 4].map((item) => (
-                <div key={item} className="h-28 rounded-[2rem] bg-slate-100 dark:bg-zinc-800 animate-pulse" />
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-4">
-              {kpiCards.map((card) => (
-                <div key={card.title} className={`rounded-[2rem] p-4 border border-slate-100 dark:border-zinc-800 ${card.bg}`}>
-                  <div className={`mb-4 inline-flex rounded-2xl p-3 ${card.accent} bg-white/70 dark:bg-zinc-900/60`}>
-                    {card.icon}
-                  </div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">{card.title}</p>
-                  <p className={`mt-2 text-2xl font-black tracking-tight ${card.accent}`}>{card.value}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
         <div className="bg-white dark:bg-zinc-900 p-6 rounded-[3rem] shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-zinc-800">
           <div className="flex justify-between items-center px-2 mb-6">
             <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 dark:text-zinc-200">Today's Logs</h3>
@@ -1506,6 +1455,57 @@ export default function Home() {
               ))
             )}
           </div>
+        </div>
+
+        <div className="bg-white dark:bg-zinc-900 p-6 rounded-[3rem] shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-zinc-800 space-y-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-slate-500 dark:text-zinc-400 text-[10px] font-black uppercase tracking-[0.3em]">Monthly KPIs</p>
+              <h3 className="text-xl font-black tracking-tight">Attendance Summary</h3>
+            </div>
+            <Calendar className="w-6 h-6 text-slate-300 dark:text-zinc-700" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 rounded-[2rem] bg-slate-100/80 dark:bg-zinc-800/70 p-2">
+            <button
+              onClick={() => setSelectedKpiPeriod("thisMonth")}
+              className={`rounded-[1.4rem] px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${selectedKpiPeriod === "thisMonth"
+                ? "bg-white dark:bg-zinc-900 text-slate-900 dark:text-white shadow-sm"
+                : "text-slate-500 dark:text-zinc-400"
+                }`}
+            >
+              {thisMonthLabel}
+            </button>
+            <button
+              onClick={() => setSelectedKpiPeriod("previousMonth")}
+              className={`rounded-[1.4rem] px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${selectedKpiPeriod === "previousMonth"
+                ? "bg-white dark:bg-zinc-900 text-slate-900 dark:text-white shadow-sm"
+                : "text-slate-500 dark:text-zinc-400"
+                }`}
+            >
+              {previousMonthLabel}
+            </button>
+          </div>
+
+          {loadingKpis ? (
+            <div className="grid grid-cols-2 gap-4">
+              {[1, 2, 3, 4].map((item) => (
+                <div key={item} className="h-28 rounded-[2rem] bg-slate-100 dark:bg-zinc-800 animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              {kpiCards.map((card) => (
+                <div key={card.title} className={`rounded-[2rem] p-4 border border-slate-100 dark:border-zinc-800 ${card.bg}`}>
+                  <div className={`mb-4 inline-flex rounded-2xl p-3 ${card.accent} bg-white/70 dark:bg-zinc-900/60`}>
+                    {card.icon}
+                  </div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">{card.title}</p>
+                  <p className={`mt-2 text-2xl font-black tracking-tight ${card.accent}`}>{card.value}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="px-6 text-center">
