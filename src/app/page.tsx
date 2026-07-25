@@ -25,7 +25,6 @@ import Map from "@/components/Map";
 
 export default function Home() {
   type KpiPeriodKey = "thisMonth" | "previousMonth";
-  type SalaryPeriodKey = "thisMonth" | "previousMonth";
   type MonthlyKpi = {
     present: number;
     absent: number;
@@ -38,6 +37,7 @@ export default function Home() {
     time?: string;
   };
 
+  const today = new Date();
   const router = useRouter();
   const [employeeInfo, setEmployeeInfo] = useState<{ id: string; name: string; hod: string; isManager: boolean; image?: string } | null>(null);
   const [bootstrapping, setBootstrapping] = useState(true);
@@ -74,11 +74,9 @@ export default function Home() {
     previousMonth: { present: 0, absent: 0, onLeave: 0, otMinutes: 0 },
   });
   const [loadingKpis, setLoadingKpis] = useState(false);
-  const [selectedSalaryPeriod, setSelectedSalaryPeriod] = useState<SalaryPeriodKey>("thisMonth");
-  const [salarySlips, setSalarySlips] = useState<Record<SalaryPeriodKey, SalarySlipDetail | null>>({
-    thisMonth: null,
-    previousMonth: null,
-  });
+  const [selectedSalaryYear, setSelectedSalaryYear] = useState(today.getFullYear());
+  const [selectedSalaryMonth, setSelectedSalaryMonth] = useState(today.getMonth() + 1);
+  const [salarySlip, setSalarySlip] = useState<SalarySlipDetail | null>(null);
   const [loadingSalarySlips, setLoadingSalarySlips] = useState(false);
   const [salaryError, setSalaryError] = useState<string | null>(null);
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
@@ -280,15 +278,18 @@ export default function Home() {
         console.error("Failed to resolve manager status:", error);
         fetchMyHistory(id);
         fetchMonthlyKpis(id);
-        fetchSalarySlips(id);
       });
     }
   }, [router]);
 
+  useEffect(() => {
+    if (!employeeInfo) return;
+    fetchSalarySlip(employeeInfo.id, selectedSalaryYear, selectedSalaryMonth);
+  }, [employeeInfo, selectedSalaryMonth, selectedSalaryYear]);
+
   const fetchEverything = async (id: string, isManager: boolean) => {
     await fetchMyHistory(id);
     await fetchMonthlyKpis(id);
-    await fetchSalarySlips(id);
     if (isManager) {
       await fetchTeamHistory(id);
       await fetchPendingApprovals(id);
@@ -454,6 +455,31 @@ export default function Home() {
     return value.slice(0, 7);
   };
 
+  const buildMonthDateRange = (year: number, month: number) => {
+    const start = `${year}-${String(month).padStart(2, "0")}-01`;
+    const endDate = new Date(year, month, 0);
+    const end = `${year}-${String(month).padStart(2, "0")}-${String(endDate.getDate()).padStart(2, "0")}`;
+
+    return { start, end };
+  };
+
+  const monthOptions = [
+    { value: 1, label: "January" },
+    { value: 2, label: "February" },
+    { value: 3, label: "March" },
+    { value: 4, label: "April" },
+    { value: 5, label: "May" },
+    { value: 6, label: "June" },
+    { value: 7, label: "July" },
+    { value: 8, label: "August" },
+    { value: 9, label: "September" },
+    { value: 10, label: "October" },
+    { value: 11, label: "November" },
+    { value: 12, label: "December" },
+  ];
+
+  const salaryYearOptions = Array.from({ length: 6 }, (_, index) => today.getFullYear() - index);
+
   const formatCurrency = (value: number | string | null | undefined, currency = "AED") => {
     const numericValue = typeof value === "number" ? value : Number(value || 0);
     return new Intl.NumberFormat(undefined, {
@@ -464,56 +490,29 @@ export default function Home() {
     }).format(Number.isFinite(numericValue) ? numericValue : 0);
   };
 
-  const fetchSalarySlips = async (employeeId: string) => {
+  const fetchSalarySlip = async (employeeId: string, year: number, month: number) => {
     setLoadingSalarySlips(true);
     setSalaryError(null);
 
     try {
-      const thisMonth = getMonthRange(0);
-      const previousMonth = getMonthRange(-1);
-      const slips = await erpnext.getSalarySlips(employeeId, previousMonth.start, thisMonth.end);
-
-      const slipMap: Record<SalaryPeriodKey, SalarySlipDetail | null> = {
-        thisMonth: null,
-        previousMonth: null,
-      };
-
-      for (const slip of slips) {
-        const slipMonth = getMonthKey(slip.start_date || slip.end_date || slip.posting_date);
-        if (!slipMap.thisMonth && slipMonth === thisMonth.start.slice(0, 7)) {
-          slipMap.thisMonth = slip;
-          continue;
-        }
-
-        if (!slipMap.previousMonth && slipMonth === previousMonth.start.slice(0, 7)) {
-          slipMap.previousMonth = slip;
-        }
-      }
-
-      const detailEntries = await Promise.allSettled(
-        (Object.entries(slipMap) as [SalaryPeriodKey, SalarySlipDetail | null][])
-          .filter(([, slip]) => Boolean(slip?.name))
-          .map(async ([period, slip]) => ({
-            period,
-            detail: await erpnext.getSalarySlipDetail((slip as SalarySlipDetail).name),
-          }))
+      const { start, end } = buildMonthDateRange(year, month);
+      const slips = await erpnext.getSalarySlips(employeeId, start, end);
+      const targetMonthKey = `${year}-${String(month).padStart(2, "0")}`;
+      const matchedSlip = slips.find((slip) =>
+        getMonthKey(slip.start_date || slip.end_date || slip.posting_date) === targetMonthKey
       );
 
-      for (const result of detailEntries) {
-        if (result.status !== "fulfilled") {
-          console.error("Failed to fetch salary slip details:", result.reason);
-          continue;
-        }
-
-        if (result.value.detail) {
-          slipMap[result.value.period] = result.value.detail;
-        }
+      if (!matchedSlip?.name) {
+        setSalarySlip(null);
+        return;
       }
 
-      setSalarySlips(slipMap);
+      const detail = await erpnext.getSalarySlipDetail(matchedSlip.name);
+      setSalarySlip(detail);
     } catch (error) {
-      console.error("Failed to fetch salary slips:", error);
-      setSalaryError("Failed to load salary slips from ERPNext.");
+      console.error("Failed to fetch salary slip:", error);
+      setSalaryError("Failed to load salary slip from ERPNext.");
+      setSalarySlip(null);
     } finally {
       setLoadingSalarySlips(false);
     }
@@ -925,7 +924,7 @@ export default function Home() {
 
     const thisMonthLabel = getMonthRange(0).label;
     const previousMonthLabel = getMonthRange(-1).label;
-    const activeSalarySlip = salarySlips[selectedSalaryPeriod];
+    const activeSalarySlip = salarySlip;
 
     if (activeTab === 'calendar') {
       return <CalendarView employeeId={employeeInfo.id} />;
@@ -1098,25 +1097,35 @@ export default function Home() {
           </div>
 
           <div className="bg-white dark:bg-zinc-900 p-6 rounded-[3rem] shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-zinc-800 space-y-6">
-            <div className="grid grid-cols-2 gap-3 rounded-[2rem] bg-slate-100/80 dark:bg-zinc-800/70 p-2">
-              <button
-                onClick={() => setSelectedSalaryPeriod("thisMonth")}
-                className={`rounded-[1.4rem] px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${selectedSalaryPeriod === "thisMonth"
-                  ? "bg-white dark:bg-zinc-900 text-slate-900 dark:text-white shadow-sm"
-                  : "text-slate-500 dark:text-zinc-400"
-                  }`}
-              >
-                {thisMonthLabel}
-              </button>
-              <button
-                onClick={() => setSelectedSalaryPeriod("previousMonth")}
-                className={`rounded-[1.4rem] px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${selectedSalaryPeriod === "previousMonth"
-                  ? "bg-white dark:bg-zinc-900 text-slate-900 dark:text-white shadow-sm"
-                  : "text-slate-500 dark:text-zinc-400"
-                  }`}
-              >
-                {previousMonthLabel}
-              </button>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="space-y-2">
+                <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Year</span>
+                <select
+                  value={selectedSalaryYear}
+                  onChange={(event) => setSelectedSalaryYear(Number(event.target.value))}
+                  className="w-full rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-900 outline-none transition focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                >
+                  {salaryYearOptions.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-2">
+                <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Month</span>
+                <select
+                  value={selectedSalaryMonth}
+                  onChange={(event) => setSelectedSalaryMonth(Number(event.target.value))}
+                  className="w-full rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-900 outline-none transition focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                >
+                  {monthOptions.map((month) => (
+                    <option key={month.value} value={month.value}>
+                      {month.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
             {salaryError && (
@@ -1134,7 +1143,7 @@ export default function Home() {
             ) : !activeSalarySlip ? (
               <div className="text-center py-12 bg-slate-50 dark:bg-zinc-800/40 rounded-[2rem] border border-dashed border-slate-200 dark:border-zinc-700">
                 <p className="text-slate-500 dark:text-zinc-400 text-sm font-bold">
-                  No salary slip has been created for {selectedSalaryPeriod === "thisMonth" ? thisMonthLabel.toLowerCase() : previousMonthLabel.toLowerCase()}.
+                  No salary slip has been created for {monthOptions.find((month) => month.value === selectedSalaryMonth)?.label} {selectedSalaryYear}.
                 </p>
               </div>
             ) : (
