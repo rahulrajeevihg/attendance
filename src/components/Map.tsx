@@ -18,12 +18,12 @@ export default function MapboxMap({ lat, lng, isOnline = true }: { lat: number; 
                 </div>
                 <div>
                     <h3 className="font-bold text-slate-700 dark:text-zinc-200">
-                        {MAPBOX_TOKEN ? 'Offline Mode' : 'Map Unavailable'}
+                        {MAPBOX_TOKEN ? 'Offline Mode' : 'Location Preview'}
                     </h3>
                     <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-[200px] mx-auto">
                         {MAPBOX_TOKEN
                             ? 'Map tiles unavailable. GPS is still capturing your location accurately.'
-                            : 'Set NEXT_PUBLIC_MAPBOX_TOKEN to enable map tiles and reverse geocoding.'}
+                            : 'Live map tiles are disabled. GPS coordinates are still captured accurately for check-in and check-out.'}
                     </p>
                 </div>
                 <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-700">

@@ -849,17 +849,17 @@ export default function Home() {
   const fetchLandmark = async (lat: number, lng: number) => {
     try {
       if (!mapboxToken) {
-        return "Mapbox token not configured";
+        return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
       }
 
       const response = await fetch(
         `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${mapboxToken}&types=poi,address,neighborhood&limit=1`
       );
       const data = await response.json();
-      return data.features?.[0]?.place_name || "Unknown Location";
+      return data.features?.[0]?.place_name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
     } catch (error) {
       console.error("Geocoding error:", error);
-      return "Address unavailable";
+      return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
     }
   };
 
