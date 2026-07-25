@@ -1417,99 +1417,6 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Today's Check In</p>
-                <p className="mt-2 text-base font-black tracking-tight text-slate-900 dark:text-white">
-                  {checkInDisplayTime ? formatOfficialTime(checkInDisplayTime) : "Not Created"}
-                </p>
-                <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                  {checkInSourceLabel}
-                </p>
-              </div>
-              <div className="rounded-2xl border border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Today's Check Out</p>
-                <p className="mt-2 text-base font-black tracking-tight text-slate-900 dark:text-white">
-                  {checkOutDisplayTime ? formatOfficialTime(checkOutDisplayTime) : "Not Created"}
-                </p>
-                <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                  {checkOutSourceLabel}
-                </p>
-              </div>
-            </div>
-
-            {todayOfficialCheckins.length === 0 && (
-              <p className="text-center py-2 text-slate-400 text-[10px] font-bold uppercase tracking-widest">
-                No Employee Checkin records found for today
-              </p>
-            )}
-
-            {todayOfficialCheckins.length > 0 && (
-              <div className="rounded-2xl border border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
-                    Official Employee Checkin
-                  </p>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                    {todayOfficialCheckins.length} logs
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  {todayOfficialCheckins.map((log) => (
-                    <div
-                      key={log.name || `${log.log_type}-${log.time}`}
-                      className="flex items-center justify-between rounded-xl bg-white dark:bg-zinc-900 px-3 py-2 border border-slate-100 dark:border-zinc-800"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${log.log_type === "IN" ? "bg-green-100 text-green-600" : "bg-rose-100 text-rose-600"}`}>
-                          {log.log_type === "IN" ? <LogIn className="w-4 h-4" /> : <LogOut className="w-4 h-4" />}
-                        </div>
-                        <p className="text-sm font-bold tracking-tight">
-                          {log.log_type === "IN" ? "Check In" : "Check Out"}
-                        </p>
-                      </div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        {formatOfficialTime(log.time)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {dayLogs.length === 0 ? (
-              <p className="text-center py-6 text-slate-400 text-xs font-bold uppercase tracking-widest">No logs yet today</p>
-            ) : (
-              dayLogs.map((log: any) => (
-                <div key={log.name} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-zinc-800/50 rounded-2xl border border-slate-100/50 dark:border-zinc-800/50 group">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${log.log_type === 'IN' ? 'bg-green-100 text-green-600' : 'bg-rose-100 text-rose-600'}`}>
-                      {log.log_type === 'IN' ? <LogIn className="w-5 h-5" /> : <LogOut className="w-5 h-5" />}
-                    </div>
-                    <div>
-                      <p className="font-bold text-sm tracking-tight">{log.log_type === 'IN' ? 'Check In' : 'Check Out'}</p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{new Date(log.checkin_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`text-[9px] font-black px-2 py-1 rounded-full uppercase tracking-tighter ${log.status === 'Approved' ? 'bg-green-500 text-white' :
-                      log.status === 'Rejected' ? 'bg-rose-500 text-white' : 'bg-amber-400 text-white'
-                      }`}>
-                      {log.status}
-                    </span>
-                    {log.status === 'Pending' && (
-                      <button
-                        onClick={() => handleDelete(log.name)}
-                        className="p-2 hover:bg-rose-50 text-rose-400 rounded-xl transition-colors"
-                        title="Discard Log"
-                      >
-                        <XCircle className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
           </div>
         </div>
 
@@ -1639,8 +1546,19 @@ export default function Home() {
               </button>
             </div>
 
-            <div className="h-64 w-full rounded-[3rem] overflow-hidden border border-slate-100 dark:border-zinc-800 mb-8 relative">
-              <Map lat={location?.lat || 25.2048} lng={location?.lng || 55.2708} isOnline={isOnline} />
+            <div className="h-64 w-full rounded-[3rem] overflow-hidden border border-slate-100 dark:border-zinc-800 mb-8 relative bg-slate-50 dark:bg-zinc-800/50">
+              {mapboxToken ? (
+                <Map lat={location?.lat || 25.2048} lng={location?.lng || 55.2708} isOnline={isOnline} />
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
+                    GPS Coordinates
+                  </p>
+                  <p className="text-sm font-mono font-bold text-slate-900 dark:text-white">
+                    {location ? `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}` : "--, --"}
+                  </p>
+                </div>
+              )}
               {!location && (
                 <div className="absolute inset-0 bg-white/50 dark:bg-zinc-900/50 flex items-center justify-center backdrop-blur-sm">
                   <span className="font-bold text-xs uppercase tracking-widest text-blue-600 animate-pulse">Locating...</span>
