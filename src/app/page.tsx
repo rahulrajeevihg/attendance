@@ -849,7 +849,21 @@ export default function Home() {
   const fetchLandmark = async (lat: number, lng: number) => {
     try {
       if (!mapboxToken) {
-        return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+          {
+            headers: {
+              Accept: "application/json",
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Reverse geocoding failed (${response.status})`);
+        }
+
+        const data = await response.json();
+        return data.display_name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
       }
 
       const response = await fetch(
@@ -1406,13 +1420,13 @@ export default function Home() {
               <div className="rounded-2xl border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/80 dark:bg-emerald-950/20 p-4">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">Official In</p>
                 <p className="mt-2 text-xl font-black tracking-tight text-emerald-800 dark:text-emerald-100">
-                  {formatOfficialTime(officialInLog?.time)}
+                  {formatOfficialTime(checkInDisplayTime)}
                 </p>
               </div>
               <div className="rounded-2xl border border-rose-100 dark:border-rose-900/40 bg-rose-50/80 dark:bg-rose-950/20 p-4">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-700 dark:text-rose-300">Official Out</p>
                 <p className="mt-2 text-xl font-black tracking-tight text-rose-800 dark:text-rose-100">
-                  {formatOfficialTime(officialOutLog?.time)}
+                  {formatOfficialTime(checkOutDisplayTime)}
                 </p>
               </div>
             </div>
