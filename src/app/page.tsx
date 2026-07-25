@@ -700,7 +700,7 @@ export default function Home() {
 
   const shouldHideSalaryComponent = (componentName?: string) => {
     const normalized = (componentName || "").trim().toLowerCase();
-    return normalized === "gratuity" || normalized === "leave salary";
+    return normalized.includes("gratuity") || normalized.includes("leave salary");
   };
 
   const getSalaryComponentRate = (item: SalarySlipComponent) => {
@@ -748,18 +748,40 @@ export default function Home() {
     return numericValue.toFixed(2);
   };
 
+  const getTodayValidMobileLogs = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return myCheckins
+      .filter((log: any) => new Date(log.checkin_time) >= today && log.status !== "Rejected")
+      .sort((a: any, b: any) => new Date(a.checkin_time).getTime() - new Date(b.checkin_time).getTime());
+  };
+
   const dayLogs = myCheckins.filter((log: any) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return new Date(log.checkin_time) >= today;
   });
 
+  const validMobileLogs = getTodayValidMobileLogs();
   const officialInLog = todayOfficialCheckins.find((log) => log.log_type === "IN");
   const officialOutLogs = todayOfficialCheckins.filter((log) => log.log_type === "OUT");
   const officialOutLog = officialOutLogs.length > 0 ? officialOutLogs[officialOutLogs.length - 1] : null;
+  const mobileInLogs = validMobileLogs.filter((log: any) => log.log_type === "IN");
+  const mobileOutLogs = validMobileLogs.filter((log: any) => log.log_type === "OUT");
+  const latestMobileInLog = mobileInLogs.length > 0 ? mobileInLogs[mobileInLogs.length - 1] : null;
+  const latestMobileOutLog = mobileOutLogs.length > 0 ? mobileOutLogs[mobileOutLogs.length - 1] : null;
   const formatOfficialTime = (value?: string) =>
     value ? new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--";
   const officialTodaySummary = calculateTodayWorkSummary(todayOfficialCheckins);
+  const hasExistingCheckIn = Boolean(officialInLog || latestMobileInLog);
+  const hasExistingCheckOut = Boolean(officialOutLog || latestMobileOutLog);
+  const checkInDisplayTime = officialInLog?.time || latestMobileInLog?.checkin_time;
+  const checkOutDisplayTime = officialOutLog?.time || latestMobileOutLog?.checkin_time;
+  const checkInSourceLabel = officialInLog ? "Official" : latestMobileInLog ? latestMobileInLog.status : "Not Created";
+  const checkOutSourceLabel = officialOutLog ? "Official" : latestMobileOutLog ? latestMobileOutLog.status : "Not Created";
+  const canCreateCheckIn = !hasExistingCheckIn;
+  const canCreateCheckOut = hasExistingCheckIn && !hasExistingCheckOut;
 
   const getActiveDuration = () => {
     if (todayOfficialCheckins.length > 0) {
@@ -855,6 +877,19 @@ export default function Home() {
   const handleAction = async (type: "IN" | "OUT") => {
     if (!location || !employeeInfo) {
       setLocationError("Location and Session are required.");
+      return;
+    }
+
+    if (type === "IN" && !canCreateCheckIn) {
+      alert("Today's check-in already exists. You cannot create another check-in.");
+      return;
+    }
+
+    if (type === "OUT" && !canCreateCheckOut) {
+      const message = !hasExistingCheckIn
+        ? "You need to create today's check-in before creating check-out."
+        : "Today's check-out already exists. You cannot create another check-out.";
+      alert(message);
       return;
     }
 
@@ -1382,6 +1417,27 @@ export default function Home() {
               </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Today's Check In</p>
+                <p className="mt-2 text-base font-black tracking-tight text-slate-900 dark:text-white">
+                  {checkInDisplayTime ? formatOfficialTime(checkInDisplayTime) : "Not Created"}
+                </p>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  {checkInSourceLabel}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Today's Check Out</p>
+                <p className="mt-2 text-base font-black tracking-tight text-slate-900 dark:text-white">
+                  {checkOutDisplayTime ? formatOfficialTime(checkOutDisplayTime) : "Not Created"}
+                </p>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  {checkOutSourceLabel}
+                </p>
+              </div>
+            </div>
+
             {todayOfficialCheckins.length === 0 && (
               <p className="text-center py-2 text-slate-400 text-[10px] font-bold uppercase tracking-widest">
                 No Employee Checkin records found for today
@@ -1602,8 +1658,8 @@ export default function Home() {
             <div className="grid grid-cols-2 gap-6">
               <button
                 onClick={() => handleAction("IN")}
-                disabled={status === "CHECKING_IN" || status === "CHECKED_IN" || !location}
-                className={`flex flex-col items-center gap-3 py-8 rounded-[3rem] font-black text-xs uppercase tracking-widest transition-all ${status === "CHECKED_IN" ? "bg-slate-50 text-slate-300 dark:bg-zinc-800/50 cursor-not-allowed" :
+                disabled={status === "CHECKING_IN" || !canCreateCheckIn || !location}
+                className={`flex flex-col items-center gap-3 py-8 rounded-[3rem] font-black text-xs uppercase tracking-widest transition-all ${!canCreateCheckIn ? "bg-slate-50 text-slate-300 dark:bg-zinc-800/50 cursor-not-allowed" :
                   "bg-blue-600 text-white shadow-xl shadow-blue-500/30 active:scale-95"
                   }`}
               >
@@ -1612,8 +1668,8 @@ export default function Home() {
               </button>
               <button
                 onClick={() => handleAction("OUT")}
-                disabled={status === "CHECKING_OUT" || status === "IDLE" || !location}
-                className={`flex flex-col items-center gap-3 py-8 rounded-[3rem] font-black text-xs uppercase tracking-widest transition-all ${status === "IDLE" ? "bg-slate-50 text-slate-300 dark:bg-zinc-800/50 cursor-not-allowed" :
+                disabled={status === "CHECKING_OUT" || !canCreateCheckOut || !location}
+                className={`flex flex-col items-center gap-3 py-8 rounded-[3rem] font-black text-xs uppercase tracking-widest transition-all ${!canCreateCheckOut ? "bg-slate-50 text-slate-300 dark:bg-zinc-800/50 cursor-not-allowed" :
                   "bg-rose-600 text-white shadow-xl shadow-rose-500/30 active:scale-95"
                   }`}
               >
