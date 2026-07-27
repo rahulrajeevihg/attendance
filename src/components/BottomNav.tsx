@@ -19,7 +19,10 @@ export default function BottomNav({ activeTab, setActiveTab, onFabClick, isManag
     ];
 
     return (
-        <nav className="fixed bottom-0 left-0 right-0 w-screen max-w-none bg-white dark:bg-zinc-900 border-t border-slate-100 dark:border-zinc-800 px-0 pt-2 pb-8 flex items-stretch z-50 relative">
+        <nav
+            className="fixed inset-x-0 bottom-0 w-screen max-w-none bg-white dark:bg-zinc-900 border-t border-slate-100 dark:border-zinc-800 px-0 pt-2 flex items-stretch z-[100] relative"
+            style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
+        >
             <button
                 onClick={onFabClick}
                 className="absolute left-1/2 -translate-x-1/2 -top-12 w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center shadow-xl shadow-blue-500/40 text-white transition-all active:scale-95 border-4 border-white dark:border-zinc-900 z-[60]"

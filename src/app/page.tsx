@@ -1436,11 +1436,6 @@ export default function Home() {
           )}
         </div>
 
-        <div className="px-6 text-center">
-          <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] leading-relaxed italic opacity-60">
-            "Work with intent. Precision in every second."
-          </p>
-        </div>
       </div>
     );
   };
