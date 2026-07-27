@@ -16,6 +16,10 @@ export const metadata: Metadata = {
   title: "Employee Attendance",
   description: "Check-in and Check-out PWA",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/app_icon_192.png",
+    apple: "/app_icon_192.png",
+  },
 };
 
 export default function RootLayout({

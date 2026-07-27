@@ -25,6 +25,7 @@ import Map from "@/components/Map";
 
 export default function Home() {
   type KpiPeriodKey = "thisMonth" | "previousMonth";
+  type KpiCardKey = "present" | "absent" | "onLeave" | "otMinutes" | "missedMinutes" | "missedDays";
   type MonthlyKpi = {
     present: number;
     absent: number;
@@ -32,6 +33,10 @@ export default function Home() {
     otMinutes: number;
     missedMinutes: number;
     missedDays: number;
+  };
+  type MonthlyKpiSource = {
+    attendance: AttendanceRecord[];
+    overtime: OvertimeAllocationRecord[];
   };
   type OfficialCheckinRecord = {
     name?: string;
@@ -71,9 +76,14 @@ export default function Home() {
   const [isOnline, setIsOnline] = useState(true);
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
   const [selectedKpiPeriod, setSelectedKpiPeriod] = useState<KpiPeriodKey>("thisMonth");
+  const [selectedKpiCard, setSelectedKpiCard] = useState<KpiCardKey | null>(null);
   const [monthlyKpis, setMonthlyKpis] = useState<Record<KpiPeriodKey, MonthlyKpi>>({
     thisMonth: { present: 0, absent: 0, onLeave: 0, otMinutes: 0, missedMinutes: 0, missedDays: 0 },
     previousMonth: { present: 0, absent: 0, onLeave: 0, otMinutes: 0, missedMinutes: 0, missedDays: 0 },
+  });
+  const [monthlyKpiSources, setMonthlyKpiSources] = useState<Record<KpiPeriodKey, MonthlyKpiSource>>({
+    thisMonth: { attendance: [], overtime: [] },
+    previousMonth: { attendance: [], overtime: [] },
   });
   const [loadingKpis, setLoadingKpis] = useState(false);
   const [selectedSalaryYear, setSelectedSalaryYear] = useState(today.getFullYear());
@@ -82,6 +92,37 @@ export default function Home() {
   const [loadingSalarySlips, setLoadingSalarySlips] = useState(false);
   const [salaryError, setSalaryError] = useState<string | null>(null);
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
+
+  const isAuthenticationError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error || "");
+    const normalizedMessage = message.toLowerCase();
+    return (
+      normalizedMessage.includes("authenticationerror") ||
+      normalizedMessage.includes("not logged in") ||
+      normalizedMessage.includes("session expired") ||
+      normalizedMessage.includes("(401)") ||
+      normalizedMessage.includes(" 401")
+    );
+  };
+
+  const handleSessionExpired = (error: unknown) => {
+    if (!isAuthenticationError(error)) return false;
+
+    if (typeof window !== "undefined") {
+      const expiryFlag = "erp_session_expired_notified";
+      const wasNotified = window.sessionStorage.getItem(expiryFlag) === "1";
+
+      localStorage.clear();
+      window.sessionStorage.setItem(expiryFlag, "1");
+
+      if (!wasNotified) {
+        alert("Your ERP session expired. Please log in again.");
+      }
+    }
+
+    router.push("/login");
+    return true;
+  };
 
   const calculateTodayWorkSummary = (logs: OfficialCheckinRecord[]) => {
     const sortedLogs = [...logs]
@@ -347,60 +388,60 @@ export default function Home() {
     }, 0);
   };
 
-  const buildMonthlyKpi = (attendance: AttendanceRecord[], overtime: OvertimeAllocationRecord[]): MonthlyKpi => {
-    const parseMissedMinutes = (record: AttendanceRecord) => {
-      const directCandidates = [
-        "missed_hours",
-        "missing_hours",
-        "total_missed_hours",
-        "short_hours",
-        "late_hours",
-        "late_entry_hours",
-        "early_exit_hours",
-        "late_entry",
-        "early_exit",
-      ];
+  const getAttendanceMissedMinutes = (record: AttendanceRecord) => {
+    const directCandidates = [
+      "missed_hours",
+      "missing_hours",
+      "total_missed_hours",
+      "short_hours",
+      "late_hours",
+      "late_entry_hours",
+      "early_exit_hours",
+      "late_entry",
+      "early_exit",
+    ];
 
-      const parseNumericField = (key: string, value: string | number | null | undefined) => {
-        if (typeof value === "number" && Number.isFinite(value)) {
-          return key.includes("minute") || key.includes("mins") ? value : value * 60;
-        }
-
-        if (typeof value === "string" && value.trim() !== "" && !Number.isNaN(Number(value))) {
-          const parsed = Number(value);
-          return key.includes("minute") || key.includes("mins") ? parsed : parsed * 60;
-        }
-
-        return null;
-      };
-
-      for (const key of directCandidates) {
-        const parsed = parseNumericField(key, record[key]);
-        if (parsed !== null && parsed > 0) {
-          return parsed;
-        }
+    const parseNumericField = (key: string, value: string | number | null | undefined) => {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return key.includes("minute") || key.includes("mins") ? value : value * 60;
       }
 
-      for (const [key, rawValue] of Object.entries(record)) {
-        const normalizedKey = key.trim().toLowerCase();
-        const looksLikeMissedHours =
-          (normalizedKey.includes("missed") || normalizedKey.includes("missing") || normalizedKey.includes("short")) &&
-          (normalizedKey.includes("hour") || normalizedKey.includes("minute") || normalizedKey.includes("mins"));
-
-        if (!looksLikeMissedHours) continue;
-
-        const parsed = parseNumericField(normalizedKey, rawValue);
-        if (parsed !== null && parsed > 0) {
-          return parsed;
-        }
+      if (typeof value === "string" && value.trim() !== "" && !Number.isNaN(Number(value))) {
+        const parsed = Number(value);
+        return key.includes("minute") || key.includes("mins") ? parsed : parsed * 60;
       }
 
-      return 0;
+      return null;
     };
 
+    for (const key of directCandidates) {
+      const parsed = parseNumericField(key, record[key]);
+      if (parsed !== null && parsed > 0) {
+        return parsed;
+      }
+    }
+
+    for (const [key, rawValue] of Object.entries(record)) {
+      const normalizedKey = key.trim().toLowerCase();
+      const looksLikeMissedHours =
+        (normalizedKey.includes("missed") || normalizedKey.includes("missing") || normalizedKey.includes("short")) &&
+        (normalizedKey.includes("hour") || normalizedKey.includes("minute") || normalizedKey.includes("mins"));
+
+      if (!looksLikeMissedHours) continue;
+
+      const parsed = parseNumericField(normalizedKey, rawValue);
+      if (parsed !== null && parsed > 0) {
+        return parsed;
+      }
+    }
+
+    return 0;
+  };
+
+  const buildMonthlyKpi = (attendance: AttendanceRecord[], overtime: OvertimeAllocationRecord[]): MonthlyKpi => {
     return attendance.reduce<MonthlyKpi>((summary, record) => {
       const normalizedStatus = (record.status || "").trim().toLowerCase();
-      const missedMinutes = parseMissedMinutes(record);
+      const missedMinutes = getAttendanceMissedMinutes(record);
 
       if (normalizedStatus === "present") summary.present += 1;
       else if (normalizedStatus === "absent") summary.absent += 1;
@@ -502,7 +543,12 @@ export default function Home() {
         thisMonth: buildMonthlyKpi(thisMonthAttendance, thisMonthOvertime),
         previousMonth: buildMonthlyKpi(previousMonthAttendance, previousMonthOvertime),
       });
+      setMonthlyKpiSources({
+        thisMonth: { attendance: thisMonthAttendance, overtime: thisMonthOvertime },
+        previousMonth: { attendance: previousMonthAttendance, overtime: previousMonthOvertime },
+      });
     } catch (error) {
+      if (handleSessionExpired(error)) return;
       console.error("Failed to fetch monthly KPIs:", error);
     } finally {
       setLoadingKpis(false);
@@ -569,6 +615,7 @@ export default function Home() {
       const detail = await erpnext.getSalarySlipDetail(matchedSlip.name);
       setSalarySlip(detail);
     } catch (error) {
+      if (handleSessionExpired(error)) return;
       console.error("Failed to fetch salary slip:", error);
       setSalaryError("Failed to load salary slip from ERPNext.");
       setSalarySlip(null);
@@ -644,6 +691,7 @@ export default function Home() {
       setTotalWorkTime(totalSeconds);
 
     } catch (error) {
+      if (handleSessionExpired(error)) return;
       console.error("Failed to fetch history:", error);
       setTodayOfficialCheckins([]);
     } finally {
@@ -657,6 +705,7 @@ export default function Home() {
       const data = await erpnext.getTeamCheckins(hodId);
       setTeamCheckins(data);
     } catch (error) {
+      if (handleSessionExpired(error)) return;
       console.error("Failed to fetch team history:", error);
     } finally {
       setLoadingTeamHistory(false);
@@ -699,6 +748,7 @@ export default function Home() {
       setPendingActivities(formatted);
       setApprovalsError(null);
     } catch (err: any) {
+      if (handleSessionExpired(err)) return;
       setApprovalsError("Failed to load activities from ERPNext");
       console.error(err);
     } finally {
@@ -750,6 +800,15 @@ export default function Home() {
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = Math.round(minutes % 60);
     return `${String(hours).padStart(2, "0")}h ${String(remainingMinutes).padStart(2, "0")}m`;
+  };
+
+  const formatAttendanceDate = (value?: string) => {
+    if (!value) return "-";
+    return new Date(`${value}T00:00:00`).toLocaleDateString([], {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
   };
 
   const formatSalaryPeriod = (startDate?: string, endDate?: string) => {
@@ -1362,8 +1421,97 @@ export default function Home() {
 
     // Default: Dashboard
     const kpi = monthlyKpis[selectedKpiPeriod];
+    const kpiSource = monthlyKpiSources[selectedKpiPeriod];
+    const kpiDetailItems = (() => {
+      if (!selectedKpiCard) return [];
+
+      if (selectedKpiCard === "present") {
+        return kpiSource.attendance
+          .filter((record) => (record.status || "").trim().toLowerCase() === "present")
+          .map((record) => ({
+            id: `${record.name || record.attendance_date}-present`,
+            label: formatAttendanceDate(record.attendance_date),
+            value: "Present",
+          }));
+      }
+
+      if (selectedKpiCard === "absent") {
+        return kpiSource.attendance
+          .filter((record) => (record.status || "").trim().toLowerCase() === "absent")
+          .map((record) => ({
+            id: `${record.name || record.attendance_date}-absent`,
+            label: formatAttendanceDate(record.attendance_date),
+            value: "Absent",
+          }));
+      }
+
+      if (selectedKpiCard === "onLeave") {
+        return kpiSource.attendance
+          .filter((record) => (record.status || "").trim().toLowerCase().includes("leave"))
+          .map((record) => ({
+            id: `${record.name || record.attendance_date}-leave`,
+            label: formatAttendanceDate(record.attendance_date),
+            value: record.status || "On Leave",
+          }));
+      }
+
+      if (selectedKpiCard === "otMinutes") {
+        return kpiSource.overtime.map((record, index) => {
+          const otDate = String(record.ot_date || record.date || record.attendance_date || "");
+          const entryMinutes = sumOvertimeMinutes([record]);
+          return {
+            id: `${record.name || otDate || index}-ot`,
+            label: formatAttendanceDate(otDate),
+            value: formatMinutesAsHours(entryMinutes),
+          };
+        });
+      }
+
+      if (selectedKpiCard === "missedMinutes" || selectedKpiCard === "missedDays") {
+        return kpiSource.attendance
+          .map((record) => ({
+            record,
+            missedMinutes: getAttendanceMissedMinutes(record),
+          }))
+          .filter((item) => item.missedMinutes > 0)
+          .map((item) => ({
+            id: `${item.record.name || item.record.attendance_date}-missed`,
+            label: formatAttendanceDate(item.record.attendance_date),
+            value: formatMinutesAsHours(item.missedMinutes),
+          }));
+      }
+
+      return [];
+    })();
+    const selectedKpiCardMeta = {
+      present: {
+        title: "Present Details",
+        subtitle: "Attendance dates marked present",
+      },
+      absent: {
+        title: "Absent Details",
+        subtitle: "Attendance dates marked absent",
+      },
+      onLeave: {
+        title: "Leave Details",
+        subtitle: "Attendance dates marked on leave",
+      },
+      otMinutes: {
+        title: "OT Details",
+        subtitle: "Overtime entries for the selected month",
+      },
+      missedMinutes: {
+        title: "Missed Hours Details",
+        subtitle: "Attendance dates with missed hours",
+      },
+      missedDays: {
+        title: "Missed Days Details",
+        subtitle: "Days where missed hours were recorded",
+      },
+    } satisfies Record<KpiCardKey, { title: string; subtitle: string }>;
     const kpiCards = [
       {
+        key: "present" as const,
         title: "Total Present",
         value: kpi.present,
         accent: "text-emerald-600",
@@ -1371,6 +1519,7 @@ export default function Home() {
         icon: <CheckCircle2 className="w-5 h-5" />,
       },
       {
+        key: "absent" as const,
         title: "Total Absent",
         value: kpi.absent,
         accent: "text-rose-600",
@@ -1378,6 +1527,7 @@ export default function Home() {
         icon: <XCircle className="w-5 h-5" />,
       },
       {
+        key: "onLeave" as const,
         title: "Total On Leave",
         value: kpi.onLeave,
         accent: "text-amber-600",
@@ -1385,6 +1535,7 @@ export default function Home() {
         icon: <MoonStar className="w-5 h-5" />,
       },
       {
+        key: "otMinutes" as const,
         title: "Total OT Time",
         value: formatMinutesAsHours(kpi.otMinutes),
         accent: "text-blue-600",
@@ -1392,6 +1543,7 @@ export default function Home() {
         icon: <Briefcase className="w-5 h-5" />,
       },
       {
+        key: "missedMinutes" as const,
         title: "Missed Hours",
         value: formatMinutesAsHours(kpi.missedMinutes),
         accent: "text-orange-600",
@@ -1399,6 +1551,7 @@ export default function Home() {
         icon: <AlertCircle className="w-5 h-5" />,
       },
       {
+        key: "missedDays" as const,
         title: "Missed Days",
         value: kpi.missedDays,
         accent: "text-cyan-600",
@@ -1495,16 +1648,24 @@ export default function Home() {
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-4">
-              {kpiCards.map((card) => (
-                <div key={card.title} className={`rounded-[2rem] p-4 border border-slate-100 dark:border-zinc-800 ${card.bg}`}>
-                  <div className={`mb-4 inline-flex rounded-2xl p-3 ${card.accent} bg-white/70 dark:bg-zinc-900/60`}>
-                    {card.icon}
-                  </div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">{card.title}</p>
-                  <p className={`mt-2 text-2xl font-black tracking-tight ${card.accent}`}>{card.value}</p>
-                </div>
-              ))}
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                {kpiCards.map((card) => (
+                  <button
+                    key={card.title}
+                    onClick={() => setSelectedKpiCard(card.key)}
+                    className="rounded-[2rem] border border-slate-100 bg-white p-3 text-left transition-transform active:scale-[0.98] dark:border-zinc-800 dark:bg-zinc-900"
+                  >
+                    <div className={`${card.bg} rounded-[1.5rem] p-4`}>
+                      <div className={`mb-4 inline-flex rounded-2xl p-3 ${card.accent} bg-white/70 dark:bg-zinc-900/60`}>
+                        {card.icon}
+                      </div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">{card.title}</p>
+                      <p className={`mt-2 text-2xl font-black tracking-tight ${card.accent}`}>{card.value}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -1622,6 +1783,56 @@ export default function Home() {
                 Verifying Reverse Geocode...
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {selectedKpiCard && (
+        <div className="fixed inset-0 z-[65] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-300">
+          <div
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            onClick={() => setSelectedKpiCard(null)}
+          />
+          <div className="relative w-full max-w-md overflow-hidden rounded-t-[3rem] border border-slate-100 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 sm:max-h-[85vh] sm:rounded-[3rem]">
+            <div className="w-12 h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full mx-auto mt-3 mb-5 sm:hidden" />
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 dark:border-zinc-800">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
+                  {selectedKpiPeriod === "thisMonth" ? thisMonthLabel : previousMonthLabel}
+                </p>
+                <h4 className="mt-1 text-lg font-black tracking-tight text-slate-900 dark:text-white">
+                  {selectedKpiCardMeta[selectedKpiCard].title}
+                </h4>
+                <p className="mt-1 text-sm font-medium text-slate-500 dark:text-zinc-400">
+                  {selectedKpiCardMeta[selectedKpiCard].subtitle}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedKpiCard(null)}
+                className="rounded-full bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-zinc-800 dark:text-zinc-300"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="max-h-[70vh] overflow-y-auto sm:max-h-[calc(85vh-6.5rem)]">
+              {kpiDetailItems.length === 0 ? (
+                <div className="px-5 py-6 text-sm font-medium text-slate-500 dark:text-zinc-400">
+                  No details available for this selection.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 dark:divide-zinc-800">
+                  {kpiDetailItems.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between gap-4 px-5 py-4">
+                      <p className="font-bold text-slate-900 dark:text-white">{item.label}</p>
+                      <p className="text-sm font-black uppercase tracking-wide text-slate-500 dark:text-zinc-300">
+                        {item.value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
