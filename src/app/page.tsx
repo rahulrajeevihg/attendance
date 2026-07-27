@@ -49,11 +49,28 @@ export default function Home() {
     log_type?: string;
     time?: string;
   };
+  type EmployeeInfo = {
+    id: string;
+    name: string;
+    hod: string;
+    isManager: boolean;
+    image?: string;
+  };
+  type OfflineDashboardCache = {
+    employeeInfo?: EmployeeInfo;
+    myCheckins?: any[];
+    todayOfficialCheckins?: OfficialCheckinRecord[];
+    monthlyKpis?: Record<KpiPeriodKey, MonthlyKpi>;
+    monthlyKpiSources?: Record<KpiPeriodKey, MonthlyKpiSource>;
+    totalWorkTime?: number;
+    activeStartTime?: string | null;
+    status?: "IDLE" | "CHECKING_IN" | "CHECKED_IN" | "CHECKING_OUT";
+  };
 
   const today = new Date();
   const defaultSalaryDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
   const router = useRouter();
-  const [employeeInfo, setEmployeeInfo] = useState<{ id: string; name: string; hod: string; isManager: boolean; image?: string } | null>(null);
+  const [employeeInfo, setEmployeeInfo] = useState<EmployeeInfo | null>(null);
   const [bootstrapping, setBootstrapping] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, history, approvals, calendar
@@ -103,6 +120,53 @@ export default function Home() {
   const [salaryError, setSalaryError] = useState<string | null>(null);
   const syncingOfflineQueueRef = useRef(false);
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
+
+  const readOfflineDashboardCache = (employeeId: string) => {
+    if (typeof window === "undefined") return null;
+
+    try {
+      const rawCache = localStorage.getItem(`attendance_dashboard_cache_${employeeId}`);
+      return rawCache ? JSON.parse(rawCache) as OfflineDashboardCache : null;
+    } catch (error) {
+      console.error("[App] Failed to read offline dashboard cache:", error);
+      return null;
+    }
+  };
+
+  const applyOfflineDashboardCache = (cache: OfflineDashboardCache | null) => {
+    if (!cache) return false;
+
+    if (cache.employeeInfo) setEmployeeInfo(cache.employeeInfo);
+    if (cache.myCheckins) setMyCheckins(cache.myCheckins);
+    if (cache.todayOfficialCheckins) setTodayOfficialCheckins(cache.todayOfficialCheckins);
+    if (cache.monthlyKpis) setMonthlyKpis(cache.monthlyKpis);
+    if (cache.monthlyKpiSources) setMonthlyKpiSources(cache.monthlyKpiSources);
+    if (typeof cache.totalWorkTime === "number") setTotalWorkTime(cache.totalWorkTime);
+    if (cache.activeStartTime !== undefined) {
+      setActiveStartTime(cache.activeStartTime ? new Date(cache.activeStartTime) : null);
+    }
+    if (cache.status) setStatus(cache.status);
+
+    return true;
+  };
+
+  const writeOfflineDashboardCache = (updates: OfflineDashboardCache, targetEmployeeId = employeeInfo?.id) => {
+    if (!targetEmployeeId || typeof window === "undefined") return;
+
+    try {
+      const existingCache = readOfflineDashboardCache(targetEmployeeId) || {};
+      localStorage.setItem(
+        `attendance_dashboard_cache_${targetEmployeeId}`,
+        JSON.stringify({
+          ...existingCache,
+          ...updates,
+          employeeInfo: updates.employeeInfo || employeeInfo || existingCache.employeeInfo,
+        })
+      );
+    } catch (error) {
+      console.error("[App] Failed to write offline dashboard cache:", error);
+    }
+  };
 
   const isAuthenticationError = (error: unknown) => {
     const message = error instanceof Error ? error.message : String(error || "");
@@ -393,13 +457,19 @@ export default function Home() {
 
       setEmployeeInfo(baseInfo);
       setBootstrapping(false);
+      applyOfflineDashboardCache(readOfflineDashboardCache(id));
 
       erpnext.isManager(id).then(isMgr => {
         const info = { ...baseInfo, isManager: isMgr };
         setEmployeeInfo(info);
+        writeOfflineDashboardCache({ employeeInfo: info }, id);
         fetchEverything(id, isMgr);
       }).catch((error) => {
         console.error("Failed to resolve manager status:", error);
+        const cached = readOfflineDashboardCache(id);
+        if (cached?.employeeInfo) {
+          setEmployeeInfo(cached.employeeInfo);
+        }
         fetchMyHistory(id);
         fetchMonthlyKpis(id);
       });
@@ -620,16 +690,24 @@ export default function Home() {
         },
       });
 
-      setMonthlyKpis({
+      const nextMonthlyKpis = {
         thisMonth: buildMonthlyKpi(thisMonthAttendance, thisMonthOvertime),
         previousMonth: buildMonthlyKpi(previousMonthAttendance, previousMonthOvertime),
-      });
-      setMonthlyKpiSources({
+      };
+      const nextMonthlyKpiSources = {
         thisMonth: { attendance: thisMonthAttendance, overtime: thisMonthOvertime },
         previousMonth: { attendance: previousMonthAttendance, overtime: previousMonthOvertime },
+      };
+
+      setMonthlyKpis(nextMonthlyKpis);
+      setMonthlyKpiSources(nextMonthlyKpiSources);
+      writeOfflineDashboardCache({
+        monthlyKpis: nextMonthlyKpis,
+        monthlyKpiSources: nextMonthlyKpiSources,
       });
     } catch (error) {
       if (handleSessionExpired(error)) return;
+      applyOfflineDashboardCache(readOfflineDashboardCache(employeeId));
       console.error("Failed to fetch monthly KPIs:", error);
     } finally {
       setLoadingKpis(false);
@@ -736,7 +814,15 @@ export default function Home() {
       if (officialCheckins.length > 0) {
         setTotalWorkTime(officialTodaySummary.totalSeconds);
         setActiveStartTime(officialTodaySummary.activeStartTime);
-        setStatus(officialTodaySummary.isCheckedIn ? "CHECKED_IN" : "IDLE");
+        const nextStatus = officialTodaySummary.isCheckedIn ? "CHECKED_IN" : "IDLE";
+        setStatus(nextStatus);
+        writeOfflineDashboardCache({
+          myCheckins: data,
+          todayOfficialCheckins: officialCheckins,
+          totalWorkTime: officialTodaySummary.totalSeconds,
+          activeStartTime: officialTodaySummary.activeStartTime?.toISOString() || null,
+          status: nextStatus,
+        }, empId);
         return;
       }
 
@@ -750,13 +836,17 @@ export default function Home() {
         new Date(b.checkin_time).getTime() - new Date(a.checkin_time).getTime()
       );
       const lastLog = sortedLogs[0];
+      let nextActiveStartTime: Date | null = null;
+      let nextStatus: "IDLE" | "CHECKED_IN" = "IDLE";
       if (lastLog && lastLog.log_type === 'IN' && lastLog.status !== 'Rejected') {
-        setStatus("CHECKED_IN");
-        setActiveStartTime(new Date(lastLog.checkin_time));
+        nextStatus = "CHECKED_IN";
+        nextActiveStartTime = new Date(lastLog.checkin_time);
       } else {
-        setStatus("IDLE");
-        setActiveStartTime(null);
+        nextStatus = "IDLE";
+        nextActiveStartTime = null;
       }
+      setStatus(nextStatus);
+      setActiveStartTime(nextActiveStartTime);
 
       // Calculate total work duration for today (includes Pending and Approved, excludes Rejected)
       let totalSeconds = 0;
@@ -770,11 +860,18 @@ export default function Home() {
         }
       }
       setTotalWorkTime(totalSeconds);
+      writeOfflineDashboardCache({
+        myCheckins: data,
+        todayOfficialCheckins: officialCheckins,
+        totalWorkTime: totalSeconds,
+        activeStartTime: nextActiveStartTime?.toISOString() || null,
+        status: nextStatus,
+      }, empId);
 
     } catch (error) {
       if (handleSessionExpired(error)) return;
+      applyOfflineDashboardCache(readOfflineDashboardCache(empId));
       console.error("Failed to fetch history:", error);
-      setTodayOfficialCheckins([]);
     } finally {
       setLoadingHistory(false);
     }
