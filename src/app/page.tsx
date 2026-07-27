@@ -1596,13 +1596,13 @@ export default function Home() {
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-2xl border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/80 dark:bg-emerald-950/20 p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">Official In</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">Employee Checkin</p>
                 <p className="mt-2 text-xl font-black tracking-tight text-emerald-800 dark:text-emerald-100">
                   {formatOfficialTime(checkInDisplayTime)}
                 </p>
               </div>
               <div className="rounded-2xl border border-rose-100 dark:border-rose-900/40 bg-rose-50/80 dark:bg-rose-950/20 p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-700 dark:text-rose-300">Official Out</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-700 dark:text-rose-300">Employee Checkout</p>
                 <p className="mt-2 text-xl font-black tracking-tight text-rose-800 dark:text-rose-100">
                   {formatOfficialTime(checkOutDisplayTime)}
                 </p>
