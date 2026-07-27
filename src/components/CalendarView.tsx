@@ -17,21 +17,10 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
     const [officialLogs, setOfficialLogs] = useState<any[]>([]);
     const [loadingOfficialLogs, setLoadingOfficialLogs] = useState(false);
 
-    const parseLogDate = (value?: string) => {
-        if (!value) return null;
-        const normalized = value.includes("T") ? value : value.replace(" ", "T");
-        const parsed = new Date(normalized);
-        return Number.isNaN(parsed.getTime()) ? null : parsed;
-    };
-
-    const isSameCalendarDay = (value: string | undefined, year: number, monthIndex: number, day: number) => {
-        const parsed = parseLogDate(value);
-        if (!parsed) return false;
-        return (
-            parsed.getFullYear() === year &&
-            parsed.getMonth() === monthIndex &&
-            parsed.getDate() === day
-        );
+    const getDateKey = (value?: string) => {
+        if (!value) return "";
+        const normalized = value.replace("T", " ");
+        return normalized.slice(0, 10);
     };
 
     const fetchLogs = async () => {
@@ -69,21 +58,20 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
     const padding = Array.from({ length: firstDayOfMonth }, (_, i) => i);
 
+    const buildDayKey = (day: number) =>
+        `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
     const getOfficialLogsForDay = (day: number) => {
-        return officialLogs.filter((log) =>
-            isSameCalendarDay(log.time, currentDate.getFullYear(), currentDate.getMonth(), day)
-        );
+        const dayKey = buildDayKey(day);
+        return officialLogs.filter((log) => getDateKey(log.time) === dayKey);
     };
 
     const getMobileLogsForDay = (day: number) => {
-        return mobileLogs.filter((log) => {
-            const value = log.checkin_time || log.time;
-            return isSameCalendarDay(value, currentDate.getFullYear(), currentDate.getMonth(), day);
-        });
+        const dayKey = buildDayKey(day);
+        return mobileLogs.filter((log) => getDateKey(log.checkin_time || log.time) === dayKey);
     };
 
     const selectedOfficialLogs = selectedDay ? getOfficialLogsForDay(selectedDay) : [];
-    const selectedMobileLogs = selectedDay ? getMobileLogsForDay(selectedDay) : [];
     const historyTitle = isManager ? "Team Mobile History" : "Mobile History";
     const historyEmptyText = isManager ? "No team mobile check-in history." : "No mobile check-in history.";
 
@@ -121,8 +109,7 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
                     {padding.map(i => <div key={`p-${i}`} className="h-10" />)}
                     {days.map(day => {
                         const dayOfficialLogs = getOfficialLogsForDay(day);
-                        const dayMobileLogs = getMobileLogsForDay(day);
-                        const totalLogCount = dayOfficialLogs.length + dayMobileLogs.length;
+                        const totalLogCount = dayOfficialLogs.length;
                         const hasLogs = totalLogCount > 0;
                         const isToday = day === new Date().getDate() && currentDate.getMonth() === new Date().getMonth() && currentDate.getFullYear() === new Date().getFullYear();
                         const isSelected = selectedDay === day;
@@ -164,9 +151,9 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
                     <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl text-center border border-dashed border-slate-200 dark:border-zinc-800">
                         <p className="text-slate-400 text-sm font-medium">Click a date above to see entries.</p>
                     </div>
-                ) : selectedOfficialLogs.length === 0 && selectedMobileLogs.length === 0 ? (
+                ) : selectedOfficialLogs.length === 0 ? (
                     <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl text-center border border-dashed border-slate-200 dark:border-zinc-800">
-                        <p className="text-slate-400 text-sm font-medium">No logs for this day.</p>
+                        <p className="text-slate-400 text-sm font-medium">No Employee Checkin logs for this day.</p>
                     </div>
                 ) : (
                     <div className="space-y-4">
@@ -188,28 +175,6 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
                                     <div className="bg-slate-50 dark:bg-zinc-800 px-3 py-1 rounded-full flex items-center gap-1.5">
                                         <MapPin className="w-3 h-3 text-slate-400" />
                                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">Verified</span>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-
-                        {selectedMobileLogs.slice().reverse().map((log: any) => (
-                            <div key={log.name} className="bg-white dark:bg-zinc-900 p-4 rounded-3xl shadow-sm border border-slate-100 dark:border-zinc-800 flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${log.log_type === 'IN' ? 'bg-green-50 text-green-600 dark:bg-green-500/10' : 'bg-rose-50 text-rose-600 dark:bg-rose-500/10'}`}>
-                                        <Clock className="w-5 h-5" />
-                                    </div>
-                                    <div>
-                                        <h4 className="font-bold text-sm">{log.log_type === 'IN' ? 'Check In' : 'Check Out'}</h4>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                            {new Date(log.checkin_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(log.checkin_time).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <div className="bg-slate-50 dark:bg-zinc-800 px-3 py-1 rounded-full flex items-center gap-1.5">
-                                        <MapPin className="w-3 h-3 text-slate-400" />
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">{log.status || "Mobile"}</span>
                                     </div>
                                 </div>
                             </div>
