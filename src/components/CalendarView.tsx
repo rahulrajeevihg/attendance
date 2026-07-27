@@ -17,6 +17,23 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
     const [officialLogs, setOfficialLogs] = useState<any[]>([]);
     const [loadingOfficialLogs, setLoadingOfficialLogs] = useState(false);
 
+    const parseLogDate = (value?: string) => {
+        if (!value) return null;
+        const normalized = value.includes("T") ? value : value.replace(" ", "T");
+        const parsed = new Date(normalized);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+
+    const isSameCalendarDay = (value: string | undefined, year: number, monthIndex: number, day: number) => {
+        const parsed = parseLogDate(value);
+        if (!parsed) return false;
+        return (
+            parsed.getFullYear() === year &&
+            parsed.getMonth() === monthIndex &&
+            parsed.getDate() === day
+        );
+    };
+
     const fetchLogs = async () => {
         setLoadingOfficialLogs(true);
         try {
@@ -53,15 +70,15 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
     const padding = Array.from({ length: firstDayOfMonth }, (_, i) => i);
 
     const getOfficialLogsForDay = (day: number) => {
-        const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        return officialLogs.filter(log => log.time.startsWith(dateStr));
+        return officialLogs.filter((log) =>
+            isSameCalendarDay(log.time, currentDate.getFullYear(), currentDate.getMonth(), day)
+        );
     };
 
     const getMobileLogsForDay = (day: number) => {
-        const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         return mobileLogs.filter((log) => {
             const value = log.checkin_time || log.time;
-            return typeof value === "string" && value.startsWith(dateStr);
+            return isSameCalendarDay(value, currentDate.getFullYear(), currentDate.getMonth(), day);
         });
     };
 
@@ -105,7 +122,8 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
                     {days.map(day => {
                         const dayOfficialLogs = getOfficialLogsForDay(day);
                         const dayMobileLogs = getMobileLogsForDay(day);
-                        const hasLogs = dayOfficialLogs.length > 0 || dayMobileLogs.length > 0;
+                        const totalLogCount = dayOfficialLogs.length + dayMobileLogs.length;
+                        const hasLogs = totalLogCount > 0;
                         const isToday = day === new Date().getDate() && currentDate.getMonth() === new Date().getMonth() && currentDate.getFullYear() === new Date().getFullYear();
                         const isSelected = selectedDay === day;
 
@@ -113,15 +131,15 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
                             <button
                                 key={day}
                                 onClick={() => setSelectedDay(day)}
-                                className={`h-12 flex flex-col items-center justify-center rounded-2xl relative transition-all ${isSelected ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 ring-2 ring-blue-400 ring-offset-2 dark:ring-offset-zinc-950' :
+                                className={`min-h-12 flex flex-col items-center justify-center rounded-2xl relative px-1 py-1 transition-all ${isSelected ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 ring-2 ring-blue-400 ring-offset-2 dark:ring-offset-zinc-950' :
                                         isToday ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/5 ring-1 ring-blue-200 dark:ring-blue-500/20' :
                                             hasLogs ? 'bg-slate-50 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200' : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-zinc-800'
                                     }`}
                             >
                                 <span className="text-xs font-bold">{day}</span>
                                 {hasLogs && (
-                                    <div className="flex gap-0.5 mt-0.5">
-                                        {[...dayOfficialLogs, ...dayMobileLogs].slice(0, 4).map((_, i) => (
+                                    <div className="mt-0.5 flex max-w-full flex-wrap items-center justify-center gap-0.5">
+                                        {Array.from({ length: totalLogCount }).map((_, i) => (
                                             <div key={i} className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-blue-500'}`} />
                                         ))}
                                     </div>
