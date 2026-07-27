@@ -30,6 +30,8 @@ export default function Home() {
     absent: number;
     onLeave: number;
     otMinutes: number;
+    missedMinutes: number;
+    missedDays: number;
   };
   type OfficialCheckinRecord = {
     name?: string;
@@ -70,8 +72,8 @@ export default function Home() {
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
   const [selectedKpiPeriod, setSelectedKpiPeriod] = useState<KpiPeriodKey>("thisMonth");
   const [monthlyKpis, setMonthlyKpis] = useState<Record<KpiPeriodKey, MonthlyKpi>>({
-    thisMonth: { present: 0, absent: 0, onLeave: 0, otMinutes: 0 },
-    previousMonth: { present: 0, absent: 0, onLeave: 0, otMinutes: 0 },
+    thisMonth: { present: 0, absent: 0, onLeave: 0, otMinutes: 0, missedMinutes: 0, missedDays: 0 },
+    previousMonth: { present: 0, absent: 0, onLeave: 0, otMinutes: 0, missedMinutes: 0, missedDays: 0 },
   });
   const [loadingKpis, setLoadingKpis] = useState(false);
   const [selectedSalaryYear, setSelectedSalaryYear] = useState(today.getFullYear());
@@ -346,12 +348,67 @@ export default function Home() {
   };
 
   const buildMonthlyKpi = (attendance: AttendanceRecord[], overtime: OvertimeAllocationRecord[]): MonthlyKpi => {
+    const parseMissedMinutes = (record: AttendanceRecord) => {
+      const directCandidates = [
+        "missed_hours",
+        "missing_hours",
+        "total_missed_hours",
+        "short_hours",
+        "late_hours",
+        "late_entry_hours",
+        "early_exit_hours",
+        "late_entry",
+        "early_exit",
+      ];
+
+      const parseNumericField = (key: string, value: string | number | null | undefined) => {
+        if (typeof value === "number" && Number.isFinite(value)) {
+          return key.includes("minute") || key.includes("mins") ? value : value * 60;
+        }
+
+        if (typeof value === "string" && value.trim() !== "" && !Number.isNaN(Number(value))) {
+          const parsed = Number(value);
+          return key.includes("minute") || key.includes("mins") ? parsed : parsed * 60;
+        }
+
+        return null;
+      };
+
+      for (const key of directCandidates) {
+        const parsed = parseNumericField(key, record[key]);
+        if (parsed !== null && parsed > 0) {
+          return parsed;
+        }
+      }
+
+      for (const [key, rawValue] of Object.entries(record)) {
+        const normalizedKey = key.trim().toLowerCase();
+        const looksLikeMissedHours =
+          (normalizedKey.includes("missed") || normalizedKey.includes("missing") || normalizedKey.includes("short")) &&
+          (normalizedKey.includes("hour") || normalizedKey.includes("minute") || normalizedKey.includes("mins"));
+
+        if (!looksLikeMissedHours) continue;
+
+        const parsed = parseNumericField(normalizedKey, rawValue);
+        if (parsed !== null && parsed > 0) {
+          return parsed;
+        }
+      }
+
+      return 0;
+    };
+
     return attendance.reduce<MonthlyKpi>((summary, record) => {
       const normalizedStatus = (record.status || "").trim().toLowerCase();
+      const missedMinutes = parseMissedMinutes(record);
 
       if (normalizedStatus === "present") summary.present += 1;
       else if (normalizedStatus === "absent") summary.absent += 1;
       else if (normalizedStatus.includes("leave")) summary.onLeave += 1;
+      if (missedMinutes > 0) {
+        summary.missedMinutes += missedMinutes;
+        summary.missedDays += 1;
+      }
 
       return summary;
     }, {
@@ -359,6 +416,8 @@ export default function Home() {
       absent: 0,
       onLeave: 0,
       otMinutes: sumOvertimeMinutes(overtime),
+      missedMinutes: 0,
+      missedDays: 0,
     });
   };
 
@@ -1332,6 +1391,20 @@ export default function Home() {
         bg: "bg-blue-50 dark:bg-blue-500/10",
         icon: <Briefcase className="w-5 h-5" />,
       },
+      {
+        title: "Missed Hours",
+        value: formatMinutesAsHours(kpi.missedMinutes),
+        accent: "text-orange-600",
+        bg: "bg-orange-50 dark:bg-orange-500/10",
+        icon: <AlertCircle className="w-5 h-5" />,
+      },
+      {
+        title: "Missed Days",
+        value: kpi.missedDays,
+        accent: "text-cyan-600",
+        bg: "bg-cyan-50 dark:bg-cyan-500/10",
+        icon: <Clock className="w-5 h-5" />,
+      },
     ];
 
     return (
@@ -1417,7 +1490,7 @@ export default function Home() {
 
           {loadingKpis ? (
             <div className="grid grid-cols-2 gap-4">
-              {[1, 2, 3, 4].map((item) => (
+              {[1, 2, 3, 4, 5, 6].map((item) => (
                 <div key={item} className="h-28 rounded-[2rem] bg-slate-100 dark:bg-zinc-800 animate-pulse" />
               ))}
             </div>

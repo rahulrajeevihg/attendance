@@ -17,6 +17,7 @@ export interface AttendanceRecord {
     attendance_date?: string;
     employee?: string;
     docstatus?: number;
+    [key: string]: string | number | null | undefined;
 }
 
 export interface OvertimeAllocationRecord {
@@ -201,7 +202,7 @@ export const erpnext = {
             ["attendance_date", "between", [fromDate, toDate]],
             ["docstatus", "=", 1]
         ];
-        const url = `${ERP_PROXY_URL}/resource/Attendance?fields=["name","employee","status","attendance_date","docstatus"]&filters=${JSON.stringify(filters)}&limit_page_length=500`;
+        const url = `${ERP_PROXY_URL}/resource/Attendance?fields=["*"]&filters=${JSON.stringify(filters)}&limit_page_length=500`;
 
         const response = await erpFetch(url, {
             method: 'GET',
