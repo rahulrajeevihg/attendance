@@ -181,7 +181,7 @@ export const erpnext = {
             ["time", ">=", fromDate],
             ["time", "<=", toDate]
         ];
-        const url = `${ERP_PROXY_URL}/resource/Employee%20Checkin?fields=["*"]&filters=${JSON.stringify(filters)}&order_by=time asc`;
+        const url = `${ERP_PROXY_URL}/resource/Employee%20Checkin?fields=["*"]&filters=${JSON.stringify(filters)}&order_by=time asc&limit_page_length=500`;
 
         const response = await erpFetch(url, {
             method: 'GET',

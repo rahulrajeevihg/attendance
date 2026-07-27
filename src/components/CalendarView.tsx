@@ -15,6 +15,7 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedDay, setSelectedDay] = useState<number | null>(new Date().getDate());
     const [officialLogs, setOfficialLogs] = useState<any[]>([]);
+    const [attendanceRows, setAttendanceRows] = useState<any[]>([]);
     const [loadingOfficialLogs, setLoadingOfficialLogs] = useState(false);
 
     const getDateKey = (value?: string) => {
@@ -31,9 +32,15 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
             const fromDate = `${year}-${String(month).padStart(2, '0')}-01 00:00:00`;
             const lastDay = new Date(year, month, 0).getDate();
             const toDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')} 23:59:59`;
+            const fromDay = `${year}-${String(month).padStart(2, '0')}-01`;
+            const toDay = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-            const data = await erpnext.getOfficialCheckins(employeeId, fromDate, toDate);
-            setOfficialLogs(data);
+            const [checkins, attendance] = await Promise.all([
+                erpnext.getOfficialCheckins(employeeId, fromDate, toDate),
+                erpnext.getAttendanceSummary(employeeId, fromDay, toDay),
+            ]);
+            setOfficialLogs(checkins);
+            setAttendanceRows(attendance);
         } catch (err) {
             console.error("Calendar fetch error:", err);
         } finally {
@@ -72,6 +79,9 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
     };
 
     const selectedOfficialLogs = selectedDay ? getOfficialLogsForDay(selectedDay) : [];
+    const selectedAttendance = selectedDay
+        ? attendanceRows.find((row) => row.attendance_date === buildDayKey(selectedDay))
+        : null;
     const historyTitle = isManager ? "Team Mobile History" : "Mobile History";
     const historyEmptyText = isManager ? "No team mobile check-in history." : "No mobile check-in history.";
 
@@ -143,6 +153,21 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
                         ? `Logs for ${currentDate.toLocaleString('default', { month: 'short' })} ${selectedDay}`
                         : "Select a day to view details"}
                 </h3>
+                {selectedDay && selectedAttendance && (
+                    <div className="bg-white dark:bg-zinc-900 p-4 rounded-3xl shadow-sm border border-slate-100 dark:border-zinc-800">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Attendance Status</p>
+                                <p className="mt-1 text-lg font-black tracking-tight text-slate-900 dark:text-white">
+                                    {selectedAttendance.status || "Recorded"}
+                                </p>
+                            </div>
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                                {selectedAttendance.attendance_date}
+                            </span>
+                        </div>
+                    </div>
+                )}
                 {loadingOfficialLogs ? (
                     <div className="animate-pulse space-y-4">
                         {[1, 2].map(i => <div key={i} className="h-20 bg-white dark:bg-zinc-900 rounded-3xl" />)}
