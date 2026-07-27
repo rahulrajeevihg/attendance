@@ -35,9 +35,10 @@ export default function MapboxMap({ lat, lng, isOnline = true }: { lat: number; 
     ></script>
     <script>
       const map = L.map('map', { zoomControl: true }).setView([${lat}, ${lng}], 16);
-      L.tileLayer('https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png?lang=en', {
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
+        subdomains: 'abcd',
         maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors, Wikimedia Maps'
+        attribution: '&copy; OpenStreetMap contributors, &copy; CARTO'
       }).addTo(map);
       L.marker([${lat}, ${lng}]).addTo(map);
     </script>
