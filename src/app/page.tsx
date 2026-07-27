@@ -45,6 +45,7 @@ export default function Home() {
   };
 
   const today = new Date();
+  const defaultSalaryDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
   const router = useRouter();
   const [employeeInfo, setEmployeeInfo] = useState<{ id: string; name: string; hod: string; isManager: boolean; image?: string } | null>(null);
   const [bootstrapping, setBootstrapping] = useState(true);
@@ -86,8 +87,8 @@ export default function Home() {
     previousMonth: { attendance: [], overtime: [] },
   });
   const [loadingKpis, setLoadingKpis] = useState(false);
-  const [selectedSalaryYear, setSelectedSalaryYear] = useState(today.getFullYear());
-  const [selectedSalaryMonth, setSelectedSalaryMonth] = useState(today.getMonth() + 1);
+  const [selectedSalaryYear, setSelectedSalaryYear] = useState(defaultSalaryDate.getFullYear());
+  const [selectedSalaryMonth, setSelectedSalaryMonth] = useState(defaultSalaryDate.getMonth() + 1);
   const [salarySlip, setSalarySlip] = useState<SalarySlipDetail | null>(null);
   const [loadingSalarySlips, setLoadingSalarySlips] = useState(false);
   const [salaryError, setSalaryError] = useState<string | null>(null);
