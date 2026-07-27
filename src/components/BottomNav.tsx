@@ -20,7 +20,7 @@ export default function BottomNav({ activeTab, setActiveTab, onFabClick, isManag
 
     return (
         <nav
-            className="fixed inset-x-0 bottom-0 w-screen max-w-none bg-white dark:bg-zinc-900 border-t border-slate-100 dark:border-zinc-800 px-0 pt-2 flex items-stretch z-[100] relative"
+            className="fixed inset-x-0 bottom-0 w-screen max-w-none bg-white dark:bg-zinc-900 border-t border-slate-100 dark:border-zinc-800 px-0 pt-2 flex items-stretch z-[100]"
             style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
         >
             <button
