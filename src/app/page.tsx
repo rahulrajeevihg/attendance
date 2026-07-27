@@ -1671,6 +1671,55 @@ export default function Home() {
           )}
         </div>
 
+        {selectedKpiCard && (
+          <div className="fixed inset-0 z-[65] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-300">
+            <div
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              onClick={() => setSelectedKpiCard(null)}
+            />
+            <div className="relative w-full max-w-md overflow-hidden rounded-t-[3rem] border border-slate-100 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 sm:max-h-[85vh] sm:rounded-[3rem]">
+              <div className="w-12 h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full mx-auto mt-3 mb-5 sm:hidden" />
+              <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 dark:border-zinc-800">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
+                    {selectedKpiPeriod === "thisMonth" ? thisMonthLabel : previousMonthLabel}
+                  </p>
+                  <h4 className="mt-1 text-lg font-black tracking-tight text-slate-900 dark:text-white">
+                    {selectedKpiCardMeta[selectedKpiCard].title}
+                  </h4>
+                  <p className="mt-1 text-sm font-medium text-slate-500 dark:text-zinc-400">
+                    {selectedKpiCardMeta[selectedKpiCard].subtitle}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedKpiCard(null)}
+                  className="rounded-full bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-zinc-800 dark:text-zinc-300"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="max-h-[70vh] overflow-y-auto sm:max-h-[calc(85vh-6.5rem)]">
+                {kpiDetailItems.length === 0 ? (
+                  <div className="px-5 py-6 text-sm font-medium text-slate-500 dark:text-zinc-400">
+                    No details available for this selection.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100 dark:divide-zinc-800">
+                    {kpiDetailItems.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between gap-4 px-5 py-4">
+                        <p className="font-bold text-slate-900 dark:text-white">{item.label}</p>
+                        <p className="text-sm font-black uppercase tracking-wide text-slate-500 dark:text-zinc-300">
+                          {item.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -1784,56 +1833,6 @@ export default function Home() {
                 Verifying Reverse Geocode...
               </p>
             )}
-          </div>
-        </div>
-      )}
-
-      {selectedKpiCard && (
-        <div className="fixed inset-0 z-[65] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-300">
-          <div
-            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-            onClick={() => setSelectedKpiCard(null)}
-          />
-          <div className="relative w-full max-w-md overflow-hidden rounded-t-[3rem] border border-slate-100 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 sm:max-h-[85vh] sm:rounded-[3rem]">
-            <div className="w-12 h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full mx-auto mt-3 mb-5 sm:hidden" />
-            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 dark:border-zinc-800">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
-                  {selectedKpiPeriod === "thisMonth" ? thisMonthLabel : previousMonthLabel}
-                </p>
-                <h4 className="mt-1 text-lg font-black tracking-tight text-slate-900 dark:text-white">
-                  {selectedKpiCardMeta[selectedKpiCard].title}
-                </h4>
-                <p className="mt-1 text-sm font-medium text-slate-500 dark:text-zinc-400">
-                  {selectedKpiCardMeta[selectedKpiCard].subtitle}
-                </p>
-              </div>
-              <button
-                onClick={() => setSelectedKpiCard(null)}
-                className="rounded-full bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-zinc-800 dark:text-zinc-300"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="max-h-[70vh] overflow-y-auto sm:max-h-[calc(85vh-6.5rem)]">
-              {kpiDetailItems.length === 0 ? (
-                <div className="px-5 py-6 text-sm font-medium text-slate-500 dark:text-zinc-400">
-                  No details available for this selection.
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-100 dark:divide-zinc-800">
-                  {kpiDetailItems.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between gap-4 px-5 py-4">
-                      <p className="font-bold text-slate-900 dark:text-white">{item.label}</p>
-                      <p className="text-sm font-black uppercase tracking-wide text-slate-500 dark:text-zinc-300">
-                        {item.value}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
         </div>
       )}
