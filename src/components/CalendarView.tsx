@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ChevronLeft, ChevronRight, Clock, MapPin } from "lucide-react";
 import { erpnext } from "@/lib/erpnext";
 
@@ -17,6 +17,7 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
     const [officialLogs, setOfficialLogs] = useState<any[]>([]);
     const [attendanceRows, setAttendanceRows] = useState<any[]>([]);
     const [loadingOfficialLogs, setLoadingOfficialLogs] = useState(false);
+    const [monthCache, setMonthCache] = useState<Record<string, { officialLogs: any[]; attendanceRows: any[] }>>({});
 
     const getDateKey = (value?: string) => {
         if (!value) return "";
@@ -24,7 +25,17 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
         return normalized.slice(0, 10);
     };
 
+    const monthKey = `${employeeId}-${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`;
+
     const fetchLogs = async () => {
+        const cached = monthCache[monthKey];
+        if (cached) {
+            setOfficialLogs(cached.officialLogs);
+            setAttendanceRows(cached.attendanceRows);
+            setLoadingOfficialLogs(false);
+            return;
+        }
+
         setLoadingOfficialLogs(true);
         try {
             const year = currentDate.getFullYear();
@@ -41,6 +52,13 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
             ]);
             setOfficialLogs(checkins);
             setAttendanceRows(attendance);
+            setMonthCache((current) => ({
+                ...current,
+                [monthKey]: {
+                    officialLogs: checkins,
+                    attendanceRows: attendance,
+                },
+            }));
         } catch (err) {
             console.error("Calendar fetch error:", err);
         } finally {
@@ -57,7 +75,7 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
         } else {
             setSelectedDay(null);
         }
-    }, [currentDate, employeeId]);
+    }, [currentDate, employeeId, monthKey]);
 
     const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
     const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
@@ -68,10 +86,26 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
     const buildDayKey = (day: number) =>
         `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-    const getOfficialLogsForDay = (day: number) => {
-        const dayKey = buildDayKey(day);
-        return officialLogs.filter((log) => getDateKey(log.time) === dayKey);
-    };
+    const officialLogsByDay = useMemo(() => {
+        const grouped: Record<string, any[]> = {};
+        for (const log of officialLogs) {
+            const key = getDateKey(log.time);
+            if (!key) continue;
+            if (!grouped[key]) grouped[key] = [];
+            grouped[key].push(log);
+        }
+        return grouped;
+    }, [officialLogs]);
+
+    const attendanceByDay = useMemo(() => {
+        const grouped: Record<string, any> = {};
+        for (const row of attendanceRows) {
+            if (row.attendance_date) grouped[row.attendance_date] = row;
+        }
+        return grouped;
+    }, [attendanceRows]);
+
+    const getOfficialLogsForDay = (day: number) => officialLogsByDay[buildDayKey(day)] || [];
 
     const getMobileLogsForDay = (day: number) => {
         const dayKey = buildDayKey(day);
@@ -79,9 +113,7 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
     };
 
     const selectedOfficialLogs = selectedDay ? getOfficialLogsForDay(selectedDay) : [];
-    const selectedAttendance = selectedDay
-        ? attendanceRows.find((row) => row.attendance_date === buildDayKey(selectedDay))
-        : null;
+    const selectedAttendance = selectedDay ? attendanceByDay[buildDayKey(selectedDay)] || null : null;
     const historyTitle = isManager ? "Team Mobile History" : "Mobile History";
     const historyEmptyText = isManager ? "No team mobile check-in history." : "No mobile check-in history.";
 
