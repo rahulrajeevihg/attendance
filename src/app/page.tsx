@@ -1561,18 +1561,7 @@ export default function Home() {
             </div>
 
             <div className="h-64 w-full rounded-[3rem] overflow-hidden border border-slate-100 dark:border-zinc-800 mb-8 relative bg-slate-50 dark:bg-zinc-800/50">
-              {mapboxToken ? (
-                <Map lat={location?.lat || 25.2048} lng={location?.lng || 55.2708} isOnline={isOnline} />
-              ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
-                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
-                    GPS Coordinates
-                  </p>
-                  <p className="text-sm font-mono font-bold text-slate-900 dark:text-white">
-                    {location ? `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}` : "--, --"}
-                  </p>
-                </div>
-              )}
+              <Map lat={location?.lat || 25.2048} lng={location?.lng || 55.2708} isOnline={isOnline} />
               {!location && (
                 <div className="absolute inset-0 bg-white/50 dark:bg-zinc-900/50 flex items-center justify-center backdrop-blur-sm">
                   <span className="font-bold text-xs uppercase tracking-widest text-blue-600 animate-pulse">Locating...</span>
