@@ -19,7 +19,7 @@ export default function BottomNav({ activeTab, setActiveTab, onFabClick, isManag
     ];
 
     return (
-        <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 border-t border-slate-100 dark:border-zinc-800 px-0 pt-2 pb-8 grid grid-cols-5 items-stretch z-50 relative">
+        <nav className="fixed bottom-0 left-0 right-0 w-screen max-w-none bg-white dark:bg-zinc-900 border-t border-slate-100 dark:border-zinc-800 px-0 pt-2 pb-8 flex items-stretch z-50 relative">
             <button
                 onClick={onFabClick}
                 className="absolute left-1/2 -translate-x-1/2 -top-12 w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center shadow-xl shadow-blue-500/40 text-white transition-all active:scale-95 border-4 border-white dark:border-zinc-900 z-[60]"
@@ -31,7 +31,7 @@ export default function BottomNav({ activeTab, setActiveTab, onFabClick, isManag
 
                 if (tab.isSpacer) {
                     return (
-                        <div key={tab.id} aria-hidden="true" className="h-10" />
+                        <div key={tab.id} aria-hidden="true" className="h-10 flex-1" />
                     );
                 }
 
@@ -41,7 +41,7 @@ export default function BottomNav({ activeTab, setActiveTab, onFabClick, isManag
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex h-full w-full flex-col items-center justify-center gap-1 py-2 transition-colors ${isActive ? 'text-blue-600' : 'text-slate-400 dark:text-zinc-500'
+                        className={`flex flex-1 h-full w-full flex-col items-center justify-center gap-1 py-2 transition-colors ${isActive ? 'text-blue-600' : 'text-slate-400 dark:text-zinc-500'
                             }`}
                     >
                         <Icon className={`w-5 h-5 ${isActive ? 'fill-blue-600/10' : ''}`} />
