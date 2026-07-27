@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   MapPin,
   Clock,
@@ -13,7 +13,8 @@ import {
   Briefcase,
   User,
   MoonStar,
-  XCircle
+  XCircle,
+  Loader2
 } from "lucide-react";
 
 import { AttendanceRecord, erpnext, OvertimeAllocationRecord, SalarySlipComponent, SalarySlipDetail } from "@/lib/erpnext";
@@ -37,6 +38,11 @@ export default function Home() {
   type MonthlyKpiSource = {
     attendance: AttendanceRecord[];
     overtime: OvertimeAllocationRecord[];
+  };
+  type OfflineQueueItem = {
+    id: number;
+    data: any;
+    timestamp: number;
   };
   type OfficialCheckinRecord = {
     name?: string;
@@ -72,10 +78,13 @@ export default function Home() {
   const [selectedApprovalMap, setSelectedApprovalMap] = useState<{ lat: number; lng: number; name: string } | null>(null);
   const [loadingApprovals, setLoadingApprovals] = useState(false);
   const [approvalsError, setApprovalsError] = useState<string | null>(null);
+  const [approvalActionState, setApprovalActionState] = useState<Record<string, "Approved" | "Rejected">>({});
+  const [actionNotice, setActionNotice] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [previousPendingCount, setPreviousPendingCount] = useState(0);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
   const [isOnline, setIsOnline] = useState(true);
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
+  const [offlineQueuedLogs, setOfflineQueuedLogs] = useState<any[]>([]);
   const [selectedKpiPeriod, setSelectedKpiPeriod] = useState<KpiPeriodKey>("thisMonth");
   const [selectedKpiCard, setSelectedKpiCard] = useState<KpiCardKey | null>(null);
   const [monthlyKpis, setMonthlyKpis] = useState<Record<KpiPeriodKey, MonthlyKpi>>({
@@ -92,6 +101,7 @@ export default function Home() {
   const [salarySlip, setSalarySlip] = useState<SalarySlipDetail | null>(null);
   const [loadingSalarySlips, setLoadingSalarySlips] = useState(false);
   const [salaryError, setSalaryError] = useState<string | null>(null);
+  const syncingOfflineQueueRef = useRef(false);
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
   const isAuthenticationError = (error: unknown) => {
@@ -125,6 +135,17 @@ export default function Home() {
     return true;
   };
 
+  const isNetworkError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error || "");
+    const normalizedMessage = message.toLowerCase();
+    return (
+      normalizedMessage.includes("failed to fetch") ||
+      normalizedMessage.includes("networkerror") ||
+      normalizedMessage.includes("network error") ||
+      normalizedMessage.includes("load failed")
+    );
+  };
+
   const calculateTodayWorkSummary = (logs: OfficialCheckinRecord[]) => {
     const sortedLogs = [...logs]
       .filter((log) => log.time && log.log_type)
@@ -156,19 +177,9 @@ export default function Home() {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
 
-    navigator.serviceWorker.getRegistrations().then((registrations) => {
-      registrations.forEach((registration) => {
-        registration.unregister();
-      });
-    }).catch((error) => console.error('[App] Service Worker cleanup failed:', error));
-
-    if ("caches" in window) {
-      caches.keys().then((cacheNames) => {
-        cacheNames.forEach((cacheName) => {
-          caches.delete(cacheName);
-        });
-      }).catch((error) => console.error('[App] Cache cleanup failed:', error));
-    }
+    navigator.serviceWorker
+      .register("/sw.js")
+      .catch((error) => console.error('[App] Service Worker registration failed:', error));
   }, []);
 
   // Monitor online/offline status
@@ -176,16 +187,7 @@ export default function Home() {
     const updateOnlineStatus = () => {
       setIsOnline(navigator.onLine);
       if (navigator.onLine) {
-        console.log('[App] Back online! Triggering sync...');
-        // Trigger background sync
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.ready.then(reg => {
-            // Type guard for sync API
-            if ('sync' in reg) {
-              return (reg as any).sync.register('sync-checkins');
-            }
-          }).catch(err => console.error('[App] Sync registration failed:', err));
-        }
+        syncOfflineQueue();
       }
     };
 
@@ -219,17 +221,38 @@ export default function Home() {
     checkOfflineQueue();
   }, []);
 
+  useEffect(() => {
+    if (!actionNotice) return;
+
+    const timer = window.setTimeout(() => setActionNotice(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [actionNotice]);
+
+  useEffect(() => {
+    if (!employeeInfo || !isOnline) return;
+    syncOfflineQueue();
+  }, [employeeInfo, isOnline]);
+
   const checkOfflineQueue = async () => {
     try {
       const db = await openOfflineDB();
       const tx = db.transaction('queue', 'readonly');
       const store = tx.objectStore('queue');
-      const count = await new Promise<number>((resolve) => {
-        const req = store.count();
+      const queuedItems = await new Promise<OfflineQueueItem[]>((resolve) => {
+        const req = store.getAll();
         req.onsuccess = () => resolve(req.result);
-        req.onerror = () => resolve(0);
+        req.onerror = () => resolve([]);
       });
-      setOfflineQueueCount(count);
+      setOfflineQueueCount(queuedItems.length);
+      setOfflineQueuedLogs(
+        queuedItems
+          .map((item) => ({
+            ...(item.data || {}),
+            offline_queue_id: item.id,
+            offline_timestamp: item.timestamp,
+          }))
+          .sort((a, b) => new Date(a.checkin_time).getTime() - new Date(b.checkin_time).getTime())
+      );
     } catch (error) {
       console.error('[App] Failed to check offline queue:', error);
     }
@@ -264,6 +287,63 @@ export default function Home() {
     } catch (error) {
       console.error('[App] Failed to save to offline queue:', error);
       throw error;
+    }
+  };
+
+  const deleteOfflineQueueItem = async (id: number) => {
+    const db = await openOfflineDB();
+    const tx = db.transaction('queue', 'readwrite');
+    const store = tx.objectStore('queue');
+    await new Promise((resolve, reject) => {
+      const req = store.delete(id);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  };
+
+  const syncOfflineQueue = async () => {
+    if (syncingOfflineQueueRef.current || typeof navigator === "undefined" || !navigator.onLine) return;
+
+    syncingOfflineQueueRef.current = true;
+
+    try {
+      const db = await openOfflineDB();
+      const tx = db.transaction('queue', 'readonly');
+      const store = tx.objectStore('queue');
+      const queuedItems = await new Promise<OfflineQueueItem[]>((resolve) => {
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve([]);
+      });
+
+      if (queuedItems.length === 0) {
+        await checkOfflineQueue();
+        return;
+      }
+
+      const orderedItems = [...queuedItems].sort((a, b) => a.timestamp - b.timestamp);
+      console.log('[App] Syncing offline queue:', orderedItems.length);
+
+      for (const item of orderedItems) {
+        try {
+          await erpnext.postCheckin(item.data);
+          await deleteOfflineQueueItem(item.id);
+        } catch (error) {
+          if (handleSessionExpired(error)) return;
+          console.error('[App] Offline queue sync stopped:', error);
+          break;
+        }
+      }
+
+      await checkOfflineQueue();
+      if (employeeInfo) {
+        await fetchMyHistory(employeeInfo.id);
+      }
+    } catch (error) {
+      console.error('[App] Failed to sync offline queue:', error);
+      await checkOfflineQueue();
+    } finally {
+      syncingOfflineQueueRef.current = false;
     }
   };
 
@@ -782,11 +862,37 @@ export default function Home() {
   };
 
   const handleApprovalAction = async (id: string, status: 'Approved' | 'Rejected') => {
+    if (approvalActionState[id]) return;
+
+    setApprovalActionState((prev) => ({ ...prev, [id]: status }));
+    setActionNotice(null);
+
     try {
       await erpnext.updateStatus(id, status);
+      const activity = pendingActivities.find((item) => item.id === id);
+      const statusText = status === "Approved" ? "approved" : "rejected";
+
       setPendingActivities(prev => prev.filter(a => a.id !== id));
-    } catch (err) {
-      alert(`Failed to ${status} activity`);
+      setActionNotice({
+        type: "success",
+        message: `${activity?.employee_name || activity?.name || "Activity"} ${statusText} successfully.`,
+      });
+      showNotification(
+        `Request ${status}`,
+        `${activity?.employee_name || activity?.name || "Employee request"} has been ${statusText}.`
+      );
+    } catch (err: any) {
+      if (handleSessionExpired(err)) return;
+      setActionNotice({
+        type: "error",
+        message: err?.message || `Failed to ${status.toLowerCase()} activity.`,
+      });
+    } finally {
+      setApprovalActionState((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
     }
   };
 
@@ -876,13 +982,23 @@ export default function Home() {
       .sort((a: any, b: any) => new Date(a.checkin_time).getTime() - new Date(b.checkin_time).getTime());
   };
 
+  const getTodayValidOfflineLogs = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return offlineQueuedLogs
+      .filter((log: any) => new Date(log.checkin_time) >= today && log.status !== "Rejected")
+      .sort((a: any, b: any) => new Date(a.checkin_time).getTime() - new Date(b.checkin_time).getTime());
+  };
+
   const dayLogs = myCheckins.filter((log: any) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return new Date(log.checkin_time) >= today;
   });
 
-  const validMobileLogs = getTodayValidMobileLogs();
+  const validMobileLogs = [...getTodayValidMobileLogs(), ...getTodayValidOfflineLogs()]
+    .sort((a: any, b: any) => new Date(a.checkin_time).getTime() - new Date(b.checkin_time).getTime());
   const officialInLog = todayOfficialCheckins.find((log) => log.log_type === "IN");
   const officialOutLogs = todayOfficialCheckins.filter((log) => log.log_type === "OUT");
   const officialOutLog = officialOutLogs.length > 0 ? officialOutLogs[officialOutLogs.length - 1] : null;
@@ -967,6 +1083,10 @@ export default function Home() {
 
   const fetchLandmark = async (lat: number, lng: number) => {
     try {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+      }
+
       if (!mapboxToken) {
         const response = await fetch(
           `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
@@ -1029,11 +1149,14 @@ export default function Home() {
     setStatus(type === "IN" ? "CHECKING_IN" : "CHECKING_OUT");
     setLoadingLandmark(true);
 
+    let checkinData: any = null;
+    let checkinTime = new Date();
+
     try {
       const landmark = await fetchLandmark(location.lat, location.lng);
-      const checkinTime = new Date();
+      checkinTime = new Date();
 
-      const checkinData = {
+      checkinData = {
         employee: employeeInfo.id,
         log_type: type,
         checkin_time: formatLocalDatetime(checkinTime),
@@ -1079,6 +1202,19 @@ export default function Home() {
       await fetchMyHistory(employeeInfo.id);
       console.log('[App] History refreshed');
     } catch (error: any) {
+      if (checkinData && (isNetworkError(error) || !navigator.onLine)) {
+        console.log('[App] Network failed - queuing check-in');
+        await saveToOfflineQueue(checkinData);
+        setStatus(type === "IN" ? "CHECKED_IN" : "IDLE");
+        setLoadingLandmark(false);
+        setShowMap(false);
+        setLastAction({ type: type === "IN" ? "Check-in" : "Check-out", time: checkinTime });
+        alert(`${type === "IN" ? "Check-in" : "Check-out"} saved offline. Will sync when online.`);
+        return;
+      }
+
+      if (handleSessionExpired(error)) return;
+
       console.error("[App] ERPNext Sync Error:", error);
       setLocationError(`Sync Error: ${error.message}`);
       setStatus(type === "IN" ? "IDLE" : "CHECKED_IN");
@@ -1130,6 +1266,16 @@ export default function Home() {
                 </div>
               )}
 
+              {actionNotice && (
+                <div className={`p-4 rounded-2xl border text-sm font-bold flex items-center gap-2 ${actionNotice.type === "success"
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/20"
+                  : "bg-rose-50 text-rose-600 border-rose-100 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/20"
+                  }`}>
+                  {actionNotice.type === "success" ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                  {actionNotice.message}
+                </div>
+              )}
+
               {selectedApprovalMap && (
                 <div className="bg-white dark:bg-zinc-900 rounded-3xl p-4 shadow-xl border border-blue-100 dark:border-blue-900/30 animate-in fade-in zoom-in duration-300">
                   <div className="flex justify-between items-center mb-4 px-2">
@@ -1159,7 +1305,7 @@ export default function Home() {
                   </div>
                 ) : (
                   pendingActivities.map(activity => (
-                    <div key={activity.id} className="bg-white dark:bg-zinc-900 p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-zinc-800 hover:shadow-md transition-all group">
+                    <div key={activity.id} className={`bg-white dark:bg-zinc-900 p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-zinc-800 hover:shadow-md transition-all group ${approvalActionState[activity.id] ? "opacity-80" : ""}`}>
                       <div className="flex justify-between items-start mb-4">
                         <div className="flex items-center gap-3">
                           <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-zinc-800 flex items-center justify-center overflow-hidden border border-slate-100 dark:border-zinc-800 shadow-sm">
@@ -1183,6 +1329,7 @@ export default function Home() {
                         </div>
                         <button
                           onClick={() => setSelectedApprovalMap({ lat: activity.lat, lng: activity.lng, name: activity.name })}
+                          disabled={Boolean(approvalActionState[activity.id])}
                           className="p-3 bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 rounded-2xl hover:bg-blue-100 transition-colors shadow-sm"
                         >
                           <MapIcon className="w-5 h-5" />
@@ -1199,17 +1346,19 @@ export default function Home() {
                       <div className="grid grid-cols-2 gap-3">
                         <button
                           onClick={() => handleApprovalAction(activity.id, 'Rejected')}
-                          className="flex items-center justify-center gap-2 py-3 bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-rose-100 transition-all active:scale-95"
+                          disabled={Boolean(approvalActionState[activity.id])}
+                          className="flex items-center justify-center gap-2 py-3 bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-rose-100 transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          <XCircle className="w-4 h-4" />
-                          Reject
+                          {approvalActionState[activity.id] === "Rejected" ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                          {approvalActionState[activity.id] === "Rejected" ? "Rejecting..." : "Reject"}
                         </button>
                         <button
                           onClick={() => handleApprovalAction(activity.id, 'Approved')}
-                          className="flex items-center justify-center gap-2 py-3 bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-400 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-green-100 transition-all active:scale-95 border border-green-100 dark:border-green-500/20"
+                          disabled={Boolean(approvalActionState[activity.id])}
+                          className="flex items-center justify-center gap-2 py-3 bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-400 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-green-100 transition-all active:scale-95 border border-green-100 dark:border-green-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          <CheckCircle2 className="w-4 h-4" />
-                          Approve
+                          {approvalActionState[activity.id] === "Approved" ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                          {approvalActionState[activity.id] === "Approved" ? "Approving..." : "Approve"}
                         </button>
                       </div>
                     </div>
