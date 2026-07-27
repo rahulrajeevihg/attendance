@@ -6,29 +6,32 @@ import { erpnext } from "@/lib/erpnext";
 
 interface CalendarViewProps {
     employeeId: string;
+    mobileLogs: any[];
+    loadingMobileLogs: boolean;
+    isManager: boolean;
 }
 
-export default function CalendarView({ employeeId }: CalendarViewProps) {
+export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs, isManager }: CalendarViewProps) {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedDay, setSelectedDay] = useState<number | null>(new Date().getDate());
-    const [logs, setLogs] = useState<any[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [officialLogs, setOfficialLogs] = useState<any[]>([]);
+    const [loadingOfficialLogs, setLoadingOfficialLogs] = useState(false);
 
     const fetchLogs = async () => {
-        setLoading(true);
+        setLoadingOfficialLogs(true);
         try {
             const year = currentDate.getFullYear();
             const month = currentDate.getMonth() + 1;
-            const fromDate = `${year}-${String(month).padStart(2, '0')}-01`;
+            const fromDate = `${year}-${String(month).padStart(2, '0')}-01 00:00:00`;
             const lastDay = new Date(year, month, 0).getDate();
-            const toDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+            const toDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')} 23:59:59`;
 
             const data = await erpnext.getOfficialCheckins(employeeId, fromDate, toDate);
-            setLogs(data);
+            setOfficialLogs(data);
         } catch (err) {
             console.error("Calendar fetch error:", err);
         } finally {
-            setLoading(false);
+            setLoadingOfficialLogs(false);
         }
     };
 
@@ -49,12 +52,23 @@ export default function CalendarView({ employeeId }: CalendarViewProps) {
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
     const padding = Array.from({ length: firstDayOfMonth }, (_, i) => i);
 
-    const getLogsForDay = (day: number) => {
+    const getOfficialLogsForDay = (day: number) => {
         const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        return logs.filter(log => log.time.startsWith(dateStr));
+        return officialLogs.filter(log => log.time.startsWith(dateStr));
     };
 
-    const selectedLogs = selectedDay ? getLogsForDay(selectedDay) : [];
+    const getMobileLogsForDay = (day: number) => {
+        const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        return mobileLogs.filter((log) => {
+            const value = log.checkin_time || log.time;
+            return typeof value === "string" && value.startsWith(dateStr);
+        });
+    };
+
+    const selectedOfficialLogs = selectedDay ? getOfficialLogsForDay(selectedDay) : [];
+    const selectedMobileLogs = selectedDay ? getMobileLogsForDay(selectedDay) : [];
+    const historyTitle = isManager ? "Team Mobile History" : "Mobile History";
+    const historyEmptyText = isManager ? "No team mobile check-in history." : "No mobile check-in history.";
 
     return (
         <div className="w-full max-w-md mx-auto space-y-6 pb-24">
@@ -89,8 +103,9 @@ export default function CalendarView({ employeeId }: CalendarViewProps) {
                 <div className="grid grid-cols-7 gap-2">
                     {padding.map(i => <div key={`p-${i}`} className="h-10" />)}
                     {days.map(day => {
-                        const dayLogs = getLogsForDay(day);
-                        const hasLogs = dayLogs.length > 0;
+                        const dayOfficialLogs = getOfficialLogsForDay(day);
+                        const dayMobileLogs = getMobileLogsForDay(day);
+                        const hasLogs = dayOfficialLogs.length > 0 || dayMobileLogs.length > 0;
                         const isToday = day === new Date().getDate() && currentDate.getMonth() === new Date().getMonth() && currentDate.getFullYear() === new Date().getFullYear();
                         const isSelected = selectedDay === day;
 
@@ -106,7 +121,7 @@ export default function CalendarView({ employeeId }: CalendarViewProps) {
                                 <span className="text-xs font-bold">{day}</span>
                                 {hasLogs && (
                                     <div className="flex gap-0.5 mt-0.5">
-                                        {dayLogs.map((_, i) => (
+                                        {[...dayOfficialLogs, ...dayMobileLogs].slice(0, 4).map((_, i) => (
                                             <div key={i} className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-blue-500'}`} />
                                         ))}
                                     </div>
@@ -123,7 +138,7 @@ export default function CalendarView({ employeeId }: CalendarViewProps) {
                         ? `Logs for ${currentDate.toLocaleString('default', { month: 'short' })} ${selectedDay}`
                         : "Select a day to view details"}
                 </h3>
-                {loading ? (
+                {loadingOfficialLogs ? (
                     <div className="animate-pulse space-y-4">
                         {[1, 2].map(i => <div key={i} className="h-20 bg-white dark:bg-zinc-900 rounded-3xl" />)}
                     </div>
@@ -131,30 +146,100 @@ export default function CalendarView({ employeeId }: CalendarViewProps) {
                     <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl text-center border border-dashed border-slate-200 dark:border-zinc-800">
                         <p className="text-slate-400 text-sm font-medium">Click a date above to see entries.</p>
                     </div>
-                ) : selectedLogs.length === 0 ? (
+                ) : selectedOfficialLogs.length === 0 && selectedMobileLogs.length === 0 ? (
                     <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl text-center border border-dashed border-slate-200 dark:border-zinc-800">
-                        <p className="text-slate-400 text-sm font-medium">No verified logs for this day.</p>
+                        <p className="text-slate-400 text-sm font-medium">No logs for this day.</p>
                     </div>
                 ) : (
-                    selectedLogs.slice().reverse().map((log: any) => (
-                        <div key={log.name} className="bg-white dark:bg-zinc-900 p-4 rounded-3xl shadow-sm border border-slate-100 dark:border-zinc-800 flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${log.log_type === 'IN' ? 'bg-green-50 text-green-600 dark:bg-green-500/10' : 'bg-rose-50 text-rose-600 dark:bg-rose-500/10'
-                                    }`}>
-                                    <Clock className="w-5 h-5" />
+                    <div className="space-y-4">
+                        {selectedOfficialLogs.slice().reverse().map((log: any) => (
+                            <div key={log.name} className="bg-white dark:bg-zinc-900 p-4 rounded-3xl shadow-sm border border-slate-100 dark:border-zinc-800 flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${log.log_type === 'IN' ? 'bg-green-50 text-green-600 dark:bg-green-500/10' : 'bg-rose-50 text-rose-600 dark:bg-rose-500/10'
+                                        }`}>
+                                        <Clock className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-sm">{log.log_type === 'IN' ? 'Check In' : 'Check Out'}</h4>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                            {new Date(log.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(log.time).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h4 className="font-bold text-sm">{log.log_type === 'IN' ? 'Check In' : 'Check Out'}</h4>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                        {new Date(log.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(log.time).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                                    </p>
+                                <div className="text-right">
+                                    <div className="bg-slate-50 dark:bg-zinc-800 px-3 py-1 rounded-full flex items-center gap-1.5">
+                                        <MapPin className="w-3 h-3 text-slate-400" />
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">Verified</span>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="text-right">
-                                <div className="bg-slate-50 dark:bg-zinc-800 px-3 py-1 rounded-full flex items-center gap-1.5">
-                                    <MapPin className="w-3 h-3 text-slate-400" />
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">Verified</span>
+                        ))}
+
+                        {selectedMobileLogs.slice().reverse().map((log: any) => (
+                            <div key={log.name} className="bg-white dark:bg-zinc-900 p-4 rounded-3xl shadow-sm border border-slate-100 dark:border-zinc-800 flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${log.log_type === 'IN' ? 'bg-green-50 text-green-600 dark:bg-green-500/10' : 'bg-rose-50 text-rose-600 dark:bg-rose-500/10'}`}>
+                                        <Clock className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-sm">{log.log_type === 'IN' ? 'Check In' : 'Check Out'}</h4>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                            {new Date(log.checkin_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(log.checkin_time).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                                        </p>
+                                    </div>
                                 </div>
+                                <div className="text-right">
+                                    <div className="bg-slate-50 dark:bg-zinc-800 px-3 py-1 rounded-full flex items-center gap-1.5">
+                                        <MapPin className="w-3 h-3 text-slate-400" />
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">{log.status || "Mobile"}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            <div className="space-y-4">
+                <h3 className="text-lg font-bold px-2">{historyTitle}</h3>
+                {loadingMobileLogs ? (
+                    <div className="space-y-4">
+                        {[1, 2, 3].map(i => (
+                            <div key={i} className="h-28 w-full bg-slate-100 dark:bg-zinc-900 animate-pulse rounded-3xl" />
+                        ))}
+                    </div>
+                ) : mobileLogs.length === 0 ? (
+                    <div className="text-center py-20 bg-white dark:bg-zinc-900 rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
+                        <p className="text-slate-400 font-medium">{historyEmptyText}</p>
+                    </div>
+                ) : (
+                    mobileLogs.map((item: any) => (
+                        <div key={item.name} className="bg-white dark:bg-zinc-900 p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-zinc-800 space-y-4">
+                            <div className="flex justify-between items-center">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-2 h-8 rounded-full ${item.status === 'Approved' ? 'bg-green-500' :
+                                        item.status === 'Rejected' ? 'bg-rose-500' : 'bg-amber-400'
+                                        }`} />
+                                    <div>
+                                        <h4 className="font-bold text-sm tracking-tight">{item.log_type === 'IN' ? 'Check In' : 'Check Out'}</h4>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{new Date(item.checkin_time).toLocaleString()}</p>
+                                        {isManager && (
+                                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
+                                                {item.employee_name || item.employee}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                                <span className={`text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider ${item.status === 'Approved' ? 'bg-green-50 text-green-600 dark:bg-green-500/10' :
+                                    item.status === 'Rejected' ? 'bg-rose-50 text-rose-600 dark:bg-rose-500/10' :
+                                        'bg-amber-50 text-amber-600 dark:bg-amber-500/10'
+                                    }`}>
+                                    {item.status}
+                                </span>
+                            </div>
+                            <div className="bg-slate-50 dark:bg-zinc-800/50 p-3 rounded-2xl flex items-start gap-2">
+                                <MapPin className="w-3.5 h-3.5 text-blue-500 mt-0.5" />
+                                <p className="text-[11px] text-slate-600 dark:text-zinc-400 font-medium leading-relaxed">{item.landmark || 'No address'}</p>
                             </div>
                         </div>
                     ))

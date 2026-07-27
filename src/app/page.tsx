@@ -976,7 +976,14 @@ export default function Home() {
     const activeSalarySlip = salarySlip;
 
     if (activeTab === 'calendar') {
-      return <CalendarView employeeId={employeeInfo.id} />;
+      return (
+        <CalendarView
+          employeeId={employeeInfo.id}
+          mobileLogs={employeeInfo.isManager ? teamCheckins : myCheckins}
+          loadingMobileLogs={employeeInfo.isManager ? loadingTeamHistory : loadingHistory}
+          isManager={employeeInfo.isManager}
+        />
+      );
     }
 
     if (activeTab === 'approvals') {
@@ -1288,62 +1295,6 @@ export default function Home() {
                   </p>
                 </div>
               </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    if (activeTab === 'history') {
-      const isManager = employeeInfo.isManager;
-      const historyItems = isManager ? teamCheckins : myCheckins;
-      const isLoading = isManager ? loadingTeamHistory : loadingHistory;
-      const emptyText = isManager ? "No team mobile check-in history." : "No mobile check-in history.";
-      return (
-        <div className="space-y-6 pb-24">
-          <h2 className="text-2xl font-bold px-2">{isManager ? "Team Mobile History" : "Mobile History"}</h2>
-          <div className="space-y-4">
-            {isLoading ? (
-              <div className="space-y-4">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="h-28 w-full bg-slate-100 dark:bg-zinc-900 animate-pulse rounded-3xl" />
-                ))}
-              </div>
-            ) : historyItems.length === 0 ? (
-              <div className="text-center py-20 bg-white dark:bg-zinc-900 rounded-[2.5rem] border border-dashed border-slate-200 dark:border-zinc-800">
-                <p className="text-slate-400 font-medium">{emptyText}</p>
-              </div>
-            ) : (
-              historyItems.map((item: any) => (
-                <div key={item.name} className="bg-white dark:bg-zinc-900 p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-zinc-800 space-y-4">
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-2 h-8 rounded-full ${item.status === 'Approved' ? 'bg-green-500' :
-                        item.status === 'Rejected' ? 'bg-rose-500' : 'bg-amber-400'
-                        }`} />
-                      <div>
-                        <h4 className="font-bold text-sm tracking-tight">{item.log_type === 'IN' ? 'Check In' : 'Check Out'}</h4>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{new Date(item.checkin_time).toLocaleString()}</p>
-                        {isManager && (
-                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
-                            {item.employee_name || item.employee}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <span className={`text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider ${item.status === 'Approved' ? 'bg-green-50 text-green-600 dark:bg-green-500/10' :
-                      item.status === 'Rejected' ? 'bg-rose-50 text-rose-600 dark:bg-rose-500/10' :
-                        'bg-amber-50 text-amber-600 dark:bg-amber-500/10'
-                      }`}>
-                      {item.status}
-                    </span>
-                  </div>
-                  <div className="bg-slate-50 dark:bg-zinc-800/50 p-3 rounded-2xl flex items-start gap-2">
-                    <MapPin className="w-3.5 h-3.5 text-blue-500 mt-0.5" />
-                    <p className="text-[11px] text-slate-600 dark:text-zinc-400 font-medium leading-relaxed">{item.landmark || 'No address'}</p>
-                  </div>
-                </div>
-              ))
             )}
           </div>
         </div>
