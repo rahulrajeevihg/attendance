@@ -15,9 +15,10 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedDay, setSelectedDay] = useState<number | null>(new Date().getDate());
     const [officialLogs, setOfficialLogs] = useState<any[]>([]);
-    const [attendanceRows, setAttendanceRows] = useState<any[]>([]);
     const [loadingOfficialLogs, setLoadingOfficialLogs] = useState(false);
-    const [monthCache, setMonthCache] = useState<Record<string, { officialLogs: any[]; attendanceRows: any[] }>>({});
+    const [attendanceByDayCache, setAttendanceByDayCache] = useState<Record<string, any | null>>({});
+    const [loadingAttendanceStatus, setLoadingAttendanceStatus] = useState(false);
+    const [monthCache, setMonthCache] = useState<Record<string, { officialLogs: any[] }>>({});
 
     const getDateKey = (value?: string) => {
         if (!value) return "";
@@ -31,7 +32,6 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
         const cached = monthCache[monthKey];
         if (cached) {
             setOfficialLogs(cached.officialLogs);
-            setAttendanceRows(cached.attendanceRows);
             setLoadingOfficialLogs(false);
             return;
         }
@@ -43,20 +43,13 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
             const fromDate = `${year}-${String(month).padStart(2, '0')}-01 00:00:00`;
             const lastDay = new Date(year, month, 0).getDate();
             const toDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')} 23:59:59`;
-            const fromDay = `${year}-${String(month).padStart(2, '0')}-01`;
-            const toDay = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-            const [checkins, attendance] = await Promise.all([
-                erpnext.getOfficialCheckins(employeeId, fromDate, toDate),
-                erpnext.getAttendanceSummary(employeeId, fromDay, toDay),
-            ]);
+            const checkins = await erpnext.getOfficialCheckins(employeeId, fromDate, toDate);
             setOfficialLogs(checkins);
-            setAttendanceRows(attendance);
             setMonthCache((current) => ({
                 ...current,
                 [monthKey]: {
                     officialLogs: checkins,
-                    attendanceRows: attendance,
                 },
             }));
         } catch (err) {
@@ -76,6 +69,34 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
             setSelectedDay(null);
         }
     }, [currentDate, employeeId, monthKey]);
+
+    useEffect(() => {
+        if (!selectedDay) return;
+
+        const dayKey = buildDayKey(selectedDay);
+        if (dayKey in attendanceByDayCache) return;
+
+        const fetchAttendanceStatus = async () => {
+            setLoadingAttendanceStatus(true);
+            try {
+                const rows = await erpnext.getAttendanceSummary(employeeId, dayKey, dayKey);
+                setAttendanceByDayCache((current) => ({
+                    ...current,
+                    [dayKey]: rows[0] || null,
+                }));
+            } catch (error) {
+                console.error("Attendance status fetch error:", error);
+                setAttendanceByDayCache((current) => ({
+                    ...current,
+                    [dayKey]: null,
+                }));
+            } finally {
+                setLoadingAttendanceStatus(false);
+            }
+        };
+
+        fetchAttendanceStatus();
+    }, [selectedDay, employeeId, currentDate]);
 
     const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
     const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
@@ -97,14 +118,6 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
         return grouped;
     }, [officialLogs]);
 
-    const attendanceByDay = useMemo(() => {
-        const grouped: Record<string, any> = {};
-        for (const row of attendanceRows) {
-            if (row.attendance_date) grouped[row.attendance_date] = row;
-        }
-        return grouped;
-    }, [attendanceRows]);
-
     const getOfficialLogsForDay = (day: number) => officialLogsByDay[buildDayKey(day)] || [];
 
     const getMobileLogsForDay = (day: number) => {
@@ -113,7 +126,7 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
     };
 
     const selectedOfficialLogs = selectedDay ? getOfficialLogsForDay(selectedDay) : [];
-    const selectedAttendance = selectedDay ? attendanceByDay[buildDayKey(selectedDay)] || null : null;
+    const selectedAttendance = selectedDay ? attendanceByDayCache[buildDayKey(selectedDay)] || null : null;
     const historyTitle = isManager ? "Team Mobile History" : "Mobile History";
     const historyEmptyText = isManager ? "No team mobile check-in history." : "No mobile check-in history.";
 
@@ -185,7 +198,12 @@ export default function CalendarView({ employeeId, mobileLogs, loadingMobileLogs
                         ? `Logs for ${currentDate.toLocaleString('default', { month: 'short' })} ${selectedDay}`
                         : "Select a day to view details"}
                 </h3>
-                {selectedDay && selectedAttendance && (
+                {selectedDay && loadingAttendanceStatus && (
+                    <div className="bg-white dark:bg-zinc-900 p-4 rounded-3xl shadow-sm border border-slate-100 dark:border-zinc-800">
+                        <p className="text-sm font-medium text-slate-400">Loading attendance status...</p>
+                    </div>
+                )}
+                {selectedDay && !loadingAttendanceStatus && selectedAttendance && (
                     <div className="bg-white dark:bg-zinc-900 p-4 rounded-3xl shadow-sm border border-slate-100 dark:border-zinc-800">
                         <div className="flex items-center justify-between">
                             <div>
