@@ -1108,10 +1108,8 @@ export default function Home() {
   const officialTodaySummary = calculateTodayWorkSummary(todayOfficialCheckins);
   const hasExistingCheckIn = Boolean(officialInLog || latestMobileInLog);
   const hasExistingCheckOut = Boolean(officialOutLog || latestMobileOutLog);
-  const checkInDisplayTime = officialInLog?.time || latestMobileInLog?.checkin_time;
-  const checkOutDisplayTime = officialOutLog?.time || latestMobileOutLog?.checkin_time;
-  const checkInSourceLabel = officialInLog ? "Official" : latestMobileInLog ? latestMobileInLog.status : "Not Created";
-  const checkOutSourceLabel = officialOutLog ? "Official" : latestMobileOutLog ? latestMobileOutLog.status : "Not Created";
+  const checkInDisplayTime = officialInLog?.time;
+  const checkOutDisplayTime = officialOutLog?.time;
   const canCreateCheckIn = !hasExistingCheckIn;
   const canCreateCheckOut = hasExistingCheckIn && !hasExistingCheckOut;
 
