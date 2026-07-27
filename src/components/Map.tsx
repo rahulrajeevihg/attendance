@@ -35,10 +35,9 @@ export default function MapboxMap({ lat, lng, isOnline = true }: { lat: number; 
     ></script>
     <script>
       const map = L.map('map', { zoomControl: true }).setView([${lat}, ${lng}], 16);
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
-        subdomains: 'abcd',
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors, &copy; CARTO'
+        attribution: 'Tiles &copy; Esri'
       }).addTo(map);
       L.marker([${lat}, ${lng}]).addTo(map);
     </script>
@@ -57,12 +56,12 @@ export default function MapboxMap({ lat, lng, isOnline = true }: { lat: number; 
                 />
                 <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white/95 dark:bg-zinc-900/95 px-3 py-2 shadow-sm">
                     <a
-                        href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=17/${lat}/${lng}`}
+                        href={`https://www.google.com/maps?q=${lat},${lng}`}
                         target="_blank"
                         rel="noreferrer"
                         className="text-[10px] font-black uppercase tracking-widest text-blue-600 whitespace-nowrap"
                     >
-                        Open In OSM
+                        Open Map
                     </a>
                     <code className="text-[10px] font-mono text-slate-600 dark:text-zinc-400 truncate">
                         {lat.toFixed(6)}, {lng.toFixed(6)}
