@@ -1672,13 +1672,12 @@ export default function Home() {
         </div>
 
         {selectedKpiCard && (
-          <div className="fixed inset-0 z-[65] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-300">
+          <div className="fixed inset-0 z-[65] flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-300">
             <div
               className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
               onClick={() => setSelectedKpiCard(null)}
             />
-            <div className="relative w-full max-w-md overflow-hidden rounded-t-[3rem] border border-slate-100 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 sm:max-h-[85vh] sm:rounded-[3rem]">
-              <div className="w-12 h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full mx-auto mt-3 mb-5 sm:hidden" />
+            <div className="relative flex w-full max-w-md max-h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-[2.5rem] border border-slate-100 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 sm:max-h-[85vh]">
               <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 dark:border-zinc-800">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
@@ -1699,7 +1698,7 @@ export default function Home() {
                 </button>
               </div>
 
-              <div className="max-h-[70vh] overflow-y-auto sm:max-h-[calc(85vh-6.5rem)]">
+              <div className="min-h-0 flex-1 overflow-y-auto">
                 {kpiDetailItems.length === 0 ? (
                   <div className="px-5 py-6 text-sm font-medium text-slate-500 dark:text-zinc-400">
                     No details available for this selection.
@@ -1778,61 +1777,61 @@ export default function Home() {
       </main>
 
       {showMap && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-300">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowMap(false)} />
-          <div className="relative w-full max-w-lg bg-white dark:bg-zinc-900 rounded-t-[3.5rem] sm:rounded-[4rem] p-8 shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-500">
-            <div className="w-12 h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full mx-auto mb-8 sm:hidden" />
-
-            <div className="flex justify-between items-center mb-8">
-              <h3 className="text-2xl font-black">Sync Location</h3>
+          <div className="relative flex w-full max-w-lg max-h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-[2.5rem] bg-white shadow-2xl dark:bg-zinc-900 animate-in slide-in-from-bottom duration-500">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-zinc-800 sm:px-8 sm:py-6">
+              <h3 className="text-xl font-black sm:text-2xl">Sync Location</h3>
               <button onClick={() => setShowMap(false)} className="bg-slate-50 dark:bg-zinc-800 p-3 rounded-full hover:rotate-90 transition-transform duration-300">
                 <Clock className="w-6 h-6 rotate-45 text-slate-400" />
               </button>
             </div>
 
-            <div className="h-64 w-full rounded-[3rem] overflow-hidden border border-slate-100 dark:border-zinc-800 mb-8 relative bg-slate-50 dark:bg-zinc-800/50">
-              <Map lat={location?.lat || 25.2048} lng={location?.lng || 55.2708} isOnline={isOnline} />
-              {!location && (
-                <div className="absolute inset-0 bg-white/50 dark:bg-zinc-900/50 flex items-center justify-center backdrop-blur-sm">
-                  <span className="font-bold text-xs uppercase tracking-widest text-blue-600 animate-pulse">Locating...</span>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-8 sm:py-6">
+              <div className="h-56 sm:h-64 w-full rounded-[2rem] sm:rounded-[3rem] overflow-hidden border border-slate-100 dark:border-zinc-800 mb-6 relative bg-slate-50 dark:bg-zinc-800/50">
+                <Map lat={location?.lat || 25.2048} lng={location?.lng || 55.2708} isOnline={isOnline} />
+                {!location && (
+                  <div className="absolute inset-0 bg-white/50 dark:bg-zinc-900/50 flex items-center justify-center backdrop-blur-sm">
+                    <span className="font-bold text-xs uppercase tracking-widest text-blue-600 animate-pulse">Locating...</span>
+                  </div>
+                )}
+              </div>
+
+              {locationError && (
+                <div className="bg-rose-50 dark:bg-rose-500/10 p-5 rounded-3xl mb-6 text-rose-500 text-sm font-bold flex items-center gap-3 border border-rose-100 dark:border-rose-500/20">
+                  <AlertCircle className="w-5 h-5 shrink-0" />
+                  <span>{locationError}</span>
                 </div>
               )}
-            </div>
 
-            {locationError && (
-              <div className="bg-rose-50 dark:bg-rose-500/10 p-5 rounded-3xl mb-8 text-rose-500 text-sm font-bold flex items-center gap-3 border border-rose-100 dark:border-rose-500/20">
-                <AlertCircle className="w-5 h-5 shrink-0" />
-                <span>{locationError}</span>
+              <div className="grid grid-cols-2 gap-4 sm:gap-6">
+                <button
+                  onClick={() => handleAction("IN")}
+                  disabled={status === "CHECKING_IN" || !canCreateCheckIn || !location}
+                  className={`flex flex-col items-center gap-3 py-6 sm:py-8 rounded-[2rem] sm:rounded-[3rem] font-black text-xs uppercase tracking-widest transition-all ${!canCreateCheckIn ? "bg-slate-50 text-slate-300 dark:bg-zinc-800/50 cursor-not-allowed" :
+                    "bg-blue-600 text-white shadow-xl shadow-blue-500/30 active:scale-95"
+                    }`}
+                >
+                  {status === "CHECKING_IN" ? <span className="animate-spin text-3xl">⏳</span> : <LogIn className="w-10 h-10 mb-2" />}
+                  Check In
+                </button>
+                <button
+                  onClick={() => handleAction("OUT")}
+                  disabled={status === "CHECKING_OUT" || !canCreateCheckOut || !location}
+                  className={`flex flex-col items-center gap-3 py-6 sm:py-8 rounded-[2rem] sm:rounded-[3rem] font-black text-xs uppercase tracking-widest transition-all ${!canCreateCheckOut ? "bg-slate-50 text-slate-300 dark:bg-zinc-800/50 cursor-not-allowed" :
+                    "bg-rose-600 text-white shadow-xl shadow-rose-500/30 active:scale-95"
+                    }`}
+                >
+                  {status === "CHECKING_OUT" ? <span className="animate-spin text-3xl">⏳</span> : <LogOut className="w-10 h-10 mb-2" />}
+                  Check Out
+                </button>
               </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-6">
-              <button
-                onClick={() => handleAction("IN")}
-                disabled={status === "CHECKING_IN" || !canCreateCheckIn || !location}
-                className={`flex flex-col items-center gap-3 py-8 rounded-[3rem] font-black text-xs uppercase tracking-widest transition-all ${!canCreateCheckIn ? "bg-slate-50 text-slate-300 dark:bg-zinc-800/50 cursor-not-allowed" :
-                  "bg-blue-600 text-white shadow-xl shadow-blue-500/30 active:scale-95"
-                  }`}
-              >
-                {status === "CHECKING_IN" ? <span className="animate-spin text-3xl">⏳</span> : <LogIn className="w-10 h-10 mb-2" />}
-                Check In
-              </button>
-              <button
-                onClick={() => handleAction("OUT")}
-                disabled={status === "CHECKING_OUT" || !canCreateCheckOut || !location}
-                className={`flex flex-col items-center gap-3 py-8 rounded-[3rem] font-black text-xs uppercase tracking-widest transition-all ${!canCreateCheckOut ? "bg-slate-50 text-slate-300 dark:bg-zinc-800/50 cursor-not-allowed" :
-                  "bg-rose-600 text-white shadow-xl shadow-rose-500/30 active:scale-95"
-                  }`}
-              >
-                {status === "CHECKING_OUT" ? <span className="animate-spin text-3xl">⏳</span> : <LogOut className="w-10 h-10 mb-2" />}
-                Check Out
-              </button>
+              {loadingLandmark && (
+                <p className="text-center mt-6 text-[10px] font-black text-blue-500 uppercase tracking-[0.2em] animate-pulse">
+                  Verifying Reverse Geocode...
+                </p>
+              )}
             </div>
-            {loadingLandmark && (
-              <p className="text-center mt-6 text-[10px] font-black text-blue-500 uppercase tracking-[0.2em] animate-pulse">
-                Verifying Reverse Geocode...
-              </p>
-            )}
           </div>
         </div>
       )}
